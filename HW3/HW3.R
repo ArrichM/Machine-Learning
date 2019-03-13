@@ -4,6 +4,8 @@
 # Florian Benkhalifa #
 ###################################
 
+#v2
+
 #prepare workspace
 rm(list=ls())
 library(MASS)
@@ -70,6 +72,8 @@ stochastic_descent <- function(y = medv, x = lstat, beta0 = 20, beta1 = 0, eta =
 
 #run function using batch size = 1 which is simple stochastic descent
 stochastic_descent(trace = T)
+
+stochastic_descent(eta = 0.0009, epochs = 50,trace = F)
 
 lm(medv~lstat)
 
