@@ -70,54 +70,93 @@ test_data <- temp_data[-index, ][,-c(1:4,22,23)]
 
 
 
+# ============================== Initialize Functions  ==============================
+
+# Function to conveniently fit neural network. We will use this later on to evaluate a large number of layer / neuron combinations
+fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_data, tr = 0.02, create_network = F){
+  
+  # Fit neural network
+  if(create_network == F){
+    #fit network
+    nn <- neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
+                    err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
+  }else{
+    #fit network and save to global environment
+    nn <<-  neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
+                      err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
+    
+  }
+  
+  # Compute MSE from probabilities
+  mean((predict(nn, test_data1) - test_data$default_time) ^2) %T>% return
+  
+}
+
+
+# Function to create prediction evaluation matrix
+prediction_matrix <- function(predictions, observations = test_data$default_time, tr = 0.5){
+
+  #transform to binary response
+  predictions <- ifelse(predictions < tr, 0,1)
+  observations <- ifelse(observations < tr, 0,1)
+  
+  #get accordances
+  nn <- which(predictions == 0) %in% which(observations == 0) %>% sum
+  oo <- which(predictions == 1) %in% which(observations == 1) %>% sum
+  no <- which(predictions == 0) %in% which(observations == 1) %>% sum
+  on <- which(predictions == 1) %in% which(observations == 0) %>% sum
+  
+  matrix(c(oo,on,no,nn), nrow = 2, byrow = T) %>% set_rownames(1:2) %>% set_colnames(1:2)
+  
+}
+
+# Function to look up how many defaults we got right
+
+defaults_captured <- function(predictions, observations = test_data$default_time, tr = 0.5){
+ 
+  #transform to binary response
+  predictions <- ifelse(predictions < tr, 0,1)
+  observations <- ifelse(observations < tr, 0,1)
+  
+  cbind(predictions, observations)[which(observations == 1),] %>% colSums %>% set_names(c("Predicted","Observed"))
+
+}
+
+
 
 
 
 # ============================== Generate Neural Network  ==============================
 
-fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_data, tr = 0.02, create_network = F){
-  
-  # Fit neural network
-  if(create_network == F){
-  #fit network
-  nn <- neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
-          err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
-  }else{
-  #fit network and save to global environment
-  nn <<-  neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
-              err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
-    
-  }
-
-  # Compute MSE from probabilities
-  mean((predict(nn, test_data1) - test_data$default_time) ^2) %T>% return
-
-}
 
 # Evaluate a number of possible layer / neuron combinations
 eval <- apply(expand.grid(4:10,3:6),1, fit_nn, tr = 0.02)
 
 
 
-
-
-
-
 # Fit best network and save under name "nn"
 fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network = T)
 
+
+
+
 # Get predictions for the testing set
-predicted_nn <- predict(nn, test_data1) 
-predicted_nn_bin <- ifelse(predicted_nn > 0.5, 1,0)
-
-# How many defualts were predicted?
-table(predicted_nn_bin)
-
-# Compare with actual data, did we get something right?
-compare <- cbind(predicted_nn_bin, test_data1$default_time)[which(test_data1$default_time == 1),] %T>% print
+predicted_nn <- predict(nn, test_data, type = "response") 
 
 # How many did we get wrong / right
-table(predicted_nn_bin == test_data$default_time)
+prediction_matrix(predicted_nn)
+
+# Compare with actual data, did we get something right?
+defaults_captured(predicted_nn)
+
+# Compute MSE from probabilities
+mse_log <- mean((predicted_nn - test_data$default_time) ^2)
+
+
+
+
+
+
 
 
 
@@ -125,20 +164,27 @@ table(predicted_nn_bin == test_data$default_time)
 
 
 #We perform logistic regression as benchmark model
-log_reg <- glm(default_time ~ ., data = train_data, family = "binomial")
+log_reg <- glm(default_time ~ ., data = train_data, family = binomial())
+
+
+
 
 # Get predictions for the testing set
-predicted_reg <- predict(log_reg, newdata = test_data)
-predicted_reg_bin <- ifelse(predicted_reg > 0.5,1,0)
+predicted_reg <- predict(log_reg, newdata = test_data, type = "response")
 
-# How many defualts were predicted?
-table(predicted_reg_bin) 
+# How many did we get wrong / right
+prediction_matrix(predicted_reg)
 
 # Compare with actual data, did we get something right?
-compare_reg <- cbind(predicted_reg_bin, test_data$default_time)[which(test_data$default_time == 1),] %T>% print
+defaults_captured(predicted_reg)
 
 # Compute MSE from probabilities
 mse_log <- mean((predicted_reg - test_data$default_time) ^2)
+
+
+
+# Compare logistic regression and neural network
+plot(predicted_nn, predicted_reg)
 
 
 
@@ -171,11 +217,32 @@ random_forest$importance
 # Run cross validation to find best lambda
 best_lambda <- cv.glmnet(x = train_data[ ,-17] %>% as.matrix, y = train_data[ ,17] , alpha = 1, family = "binomial")$lambda.min
 
+
+
 # Fit LASSO using lambda from cross validation. We select family = binomial for logistic regression
 log_lasso <- glmnet(x = train_data[ ,-17] %>% as.matrix, y = train_data[ ,17] , alpha = 1, family = "binomial", lambda = best_lambda)
 
 
 
+
+# Get predictions for the testing set
+predicted_lasso <- predict(log_lasso, newx = test_data[ ,-17] %>% as.matrix, s = best_lambda, type = "response")
+
+# How many did we get wrong / right
+prediction_matrix(predicted_lasso)
+
+# Compare with actual data, did we get something right?
+defaults_captured(predicted_lasso)
+
+# Compute MSE from probabilities
+mse_log <- mean((predicted_lasso - test_data$default_time) ^2)
+
+
+
+
+
+# Compare logistic regression and neural network
+plot(predicted_nn, predicted_lasso)
 
 
 
