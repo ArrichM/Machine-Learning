@@ -49,7 +49,7 @@ scaled_data <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = 
 # We select a subset of the data and split it into training and testing
 temp_data <- scaled_data[sample(1:nrow(scaled_data),3000),]
 
-index <- sample(1:nrow(temp_data),1000)
+index <- sample(1:nrow(temp_data), (nrow(temp_data)*0.6) %>% ceiling)
 
 train_data <- temp_data[index,][,-c(1,2,22,23)]
 
@@ -57,14 +57,17 @@ test_data <- temp_data[-index, ][,-c(1,2,22,23)]
   
 
 # Fit neural network
-nn <- neuralnet(default_time ~ ., data = train_data, hidden = c(10,10), act.fct = "logistic", 
-                err.fct = "sse", lifesign = "full", threshold = 0.01)
+nn <- neuralnet(default_time ~ ., data = train_data, hidden = c(7,7), act.fct = "logistic", 
+                err.fct = "sse", lifesign = "full", threshold = 0.01, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
+
 
 # Get predictions for the testing set
 predicted = ifelse(predict(nn, test_data) > 0.5,1,0)
 table(predicted)
 
-
+# Compare with actual data
+table(predicted == test_data$default_time)
+table(test_data$default_time)
 
 
 ## Logistic regression as benchmark
