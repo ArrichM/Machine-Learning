@@ -19,8 +19,8 @@ sapply(toload, require, character.only = TRUE)
 
 
 
-# ============================== Read Data  ==============================
 
+# ============================== Read Data  ==============================
 
 ## Working Directory Setting
 wd <- dirname(rstudioapi::getSourceEditorContext()$path)
@@ -38,25 +38,26 @@ dat$age <- dat$time- dat$orig_time
 
 
 
+
+
+
+
 # ============================== Initialize Functions  ==============================
 
 # Function to conveniently fit neural network. We will use this later on to evaluate a large number of layer / neuron combinations
 fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_data, tr = 0.02, create_network = F){
   
   # Fit neural network
-  if(create_network == F){
     #fit network
-    nn <- try(neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
-                        err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2)))
+  nn <- try(neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
+                      err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2)))
+
+  if(create_network == F){
+    # Compute MSE from probabilities
+    return(((predict(nn, test_data1) - test_data$default_time) ^2) %>% mean)
   }else{
-    #fit network and save to global environment
-    nn <<-  neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
-                      err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
-    
+    return(nn)
   }
-  
-  # Compute MSE from probabilities
-  mean((predict(nn, test_data1) - test_data$default_time) ^2) %T>% return
   
 }
 
@@ -119,8 +120,10 @@ defaults_captured <- function(predictions, observations = test_data$default_time
 
 
 
-# ============================== Prepare Data ==============================
 
+
+
+# ============================== Prepare Data ==============================
 
 # Scale data for neural network, we do not scale id and time
 max <-  apply(dat[,-c(1,2)], 2 , max)
@@ -144,14 +147,13 @@ shuffle(n = 5000, check = "none")
 
 # ============================== Generate Neural Network  ==============================
 
-
 # Evaluate a number of possible layer / neuron combinations
 eval <- apply(expand.grid(4:10,3:6),1, fit_nn, tr = 0.03)
 
 
 
 # Fit best network and save under name "nn"
-fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network = T, tr = 0.01)
+nn <- fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network = T, tr = 0.01)
 
 
 
@@ -177,7 +179,6 @@ mse_log <- mean((predicted_nn - test_data$default_time) ^2)
 
 
 # ============================== Logistic Regression  ==============================
-
 
 #We perform logistic regression as benchmark model
 log_reg <- glm(default_time ~ ., data = train_data, family = binomial())
@@ -215,7 +216,7 @@ plot(predicted_nn, predicted_reg)
 random_forest <- randomForest(as.factor(default_time) ~ ., data = train_data)
 
 # Get predictions for the testing set
-predicted_rf <- predict(random_forest, data = test_data)
+predicted_rf <- predict(random_forest, data = test_data) %>% as.character %>% as.numeric
 
 # How many did we get wrong / right
 prediction_matrix(predicted_rf)
@@ -236,7 +237,6 @@ random_forest$importance
 
 
 # ============================== LASSO Regression  ==============================
-
 
 # Run cross validation to find best lambda
 best_lambda <- cv.glmnet(x = train_data[ ,-17] %>% as.matrix, y = train_data[ ,17] , alpha = 1, family = "binomial")$lambda.min
@@ -266,6 +266,11 @@ mse_log <- mean((predicted_lasso - test_data$default_time) ^2)
 
 # Compare logistic lasso regression and neural network
 plot(predicted_nn, predicted_lasso)
+
+# Compare logistic lasso regression and logistic regression
+
+plot(predicted_reg, predicted_lasso)
+
 
 
 
