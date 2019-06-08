@@ -43,35 +43,40 @@ dat <- dat[complete.cases(dat),]
 # Scale data for neural network, we do not scale id and time
 max <-  apply(dat[,-c(1,2)], 2 , max)
 min <-  apply(dat[,-c(1,2)], 2 , min)
-dat_scaled <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = min, scale = max - min)))
+scaled_data <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = min, scale = max - min)))
 
 
-# Select some point in time to train network. We exclude id,time, repayment and the status variable since it is redundant
-train_data <- dat_scaled[which(dat[, 2] == 15), ][,-c(1,2,22,23)]
+# We select a subset of the data and split it into training and testing
+temp_data <- scaled_data[sample(1:nrow(scaled_data),3000),]
 
-test_data <- dat_scaled[which(dat[, 2] == 16), ][,-c(1,2,22,23)]
+index <- sample(1:nrow(temp_data),1000)
+
+train_data <- temp_data[index,][,-c(1,2,22,23)]
+
+test_data <- temp_data[-index, ][,-c(1,2,22,23)]
   
 
 # Fit neural network
 nn <- neuralnet(default_time ~ ., data = train_data, hidden = c(10,10), act.fct = "logistic", 
-                err.fct = "sse", lifesign = "full", threshold = 0.05)
+                err.fct = "sse", lifesign = "full", threshold = 0.01)
 
 # Get predictions for the testing set
 predicted = ifelse(predict(nn, test_data) > 0.5,1,0)
-
+table(predicted)
 
 
 
 
 ## Logistic regression as benchmark
 
-log_reg <- glm(default_time ~ ., data = dat_scaled[,-c(1,2,22,23)], family = "binomial")
+log_reg <- glm(default_time ~ ., data = train_data, family = "binomial")
+
 
 pred <- ifelse(fitted(log_reg) > 0.5,1,0)
 
 
-correct <- table(pred == dat_scaled$default_time)
-
+table(pred == train_data$default_time)
+table(dat$default_time)
 
 
 
