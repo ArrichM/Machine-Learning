@@ -54,7 +54,7 @@ scaled_data <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = 
 set.seed(100)
 
 # Sample n data at random
-temp_data <- scaled_data[sample(1:nrow(scaled_data),10000),]
+temp_data <- scaled_data[sample(1:nrow(scaled_data),50000),]
 
 
 # Select 2/3 of the data as trainign data
@@ -82,21 +82,21 @@ nn <- neuralnet(default_time ~ ., data = train_data, hidden = 10, act.fct = "log
 
 
 # Get predictions for the testing set
-predicted_nn = ifelse(predict(nn, test_data) > 0.5,1,0)
+predicted_nn = predict(nn, test_data)
+predicted_nn_bin <- ifelse(predicted_nn > 0.5, 1,0)
 
 # How many defualts were predicted?
-table(predicted_nn)
+table(predicted_nn_bin)
 
 # Compare with actual data, did we get something right?
-compare <- cbind(predicted_nn, test_data$default_time)[which(test_data$default_time == 1),] %T>% print
+compare <- cbind(predicted_nn_bin, test_data$default_time)[which(test_data$default_time == 1),] %T>% print
 
-# How many did we get wrong 7 right
-table(predicted_nn == test_data$default_time)
-
-
-# Compute MSE
+# How many did we get wrong / right
+table(predicted_nn_bin == test_data$default_time)
 
 
+# Compute MSE from probabilities
+mse_nn <- mean((predicted_nn - test_data$default_time) ^2)
 
 
 
@@ -110,14 +110,17 @@ table(predicted_nn == test_data$default_time)
 log_reg <- glm(default_time ~ ., data = train_data, family = "binomial")
 
 # Get predictions for the testing set
-predicted_reg <- ifelse(predict(log_reg, newdata = test_data) > 0.5,1,0)
+predicted_reg <- predict(log_reg, newdata = test_data)
+predicted_reg_bin <- ifelse(predicted_reg > 0.5,1,0)
 
 # How many defualts were predicted?
-table(predicted_reg) 
+table(predicted_reg_bin) 
 
 # Compare with actual data, did we get something right?
-compare_reg <- cbind(predicted_reg, test_data$default_time)[which(test_data$default_time == 1),] %T>% print
+compare_reg <- cbind(predicted_reg_bin, test_data$default_time)[which(test_data$default_time == 1),] %T>% print
 
+# Compute MSE from probabilities
+mse_log <- mean((predicted_reg - test_data$default_time) ^2)
 
 
 
