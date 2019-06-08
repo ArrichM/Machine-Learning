@@ -62,7 +62,7 @@ fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_
 }
 
 # Shuffle data and create training and testing set on the go
-shuffle <- function(n = 5000, data = scaled_data, ratio = 2/3, check = T){
+shuffle <- function(n = 50000, data = scaled_data, ratio = 2/3, check = T){
   
 
   # Check function call
@@ -104,18 +104,27 @@ prediction_matrix <- function(predictions, observations = test_data$default_time
   
 }
 
-# Function to look up how many defaults we got right
-defaults_captured <- function(predictions, observations = test_data$default_time, tr = 0.5){
+# Function to evaluate performance of models
+evaluate_model <- function(model, observations = test_data$default_time, best_lamb = best_lambda, tr = 0.5){
+ 
+  #get predictions from the model
+  if(grepl("lasso", deparse(substitute(model))) ){
+    predictions <- predict(model, newx = test_data[ ,-17] %>% as.matrix, s = best_lamb, type = "response")
+    
+  }else{  
+    predictions <- predict(model, test_data, type = "response")
+  }
   
   #transform to binary response
-  predictions <- ifelse(predictions < tr, 0,1)
-  observations <- ifelse(observations < tr, 0,1)
+  predictions_bin <- ifelse(predictions < tr, 0,1)
   
-  cbind(predictions, observations)[which(observations == 1),] %>% colSums %>% set_names(c("Predicted","Observed"))
+  mat <- prediction_matrix(predictions)
+  detected_defaults <- mat[1,1]/colSums(mat)[1] %>% set_names("Ratio")
+  mse_cont <- (predictions-observations) ^2 %>% mean
+  mse_bin <- (predictions-observations) ^2 %>% mean
   
+  return(list(matrix = mat, detected_defaults = detected_defaults, mse_cont = mse_cont, mse_bin = mse_bin))
 }
-
-
 
 
 
@@ -145,11 +154,10 @@ shuffle(n = 5000, check = "none")
 
 
 
-# ============================== Generate Neural Network  ==============================
+# ============================== Neural Network  ==============================
 
 # Evaluate a number of possible layer / neuron combinations
 eval <- apply(expand.grid(4:10,3:6),1, fit_nn, tr = 0.03)
-
 
 
 # Fit best network and save under name "nn"
@@ -157,18 +165,8 @@ nn <- fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network 
 
 
 
-
 # Get predictions for the testing set
 predicted_nn <- predict(nn, test_data, type = "response") 
-
-# How many did we get wrong / right
-prediction_matrix(predicted_nn)
-
-# Compare with actual data, did we get something right?
-defaults_captured(predicted_nn)
-
-# Compute MSE from probabilities
-mse_log <- mean((predicted_nn - test_data$default_time) ^2)
 
 
 
@@ -189,16 +187,6 @@ log_reg <- glm(default_time ~ ., data = train_data, family = binomial())
 # Get predictions for the testing set
 predicted_reg <- predict(log_reg, newdata = test_data, type = "response")
 
-# How many did we get wrong / right
-prediction_matrix(predicted_reg)
-
-# Compare with actual data, did we get something right?
-defaults_captured(predicted_reg)
-
-# Compute MSE from probabilities
-mse_log <- mean((predicted_reg - test_data$default_time) ^2)
-
-
 
 # Compare logistic regression and neural network
 plot(predicted_nn, predicted_reg)
@@ -214,6 +202,9 @@ plot(predicted_nn, predicted_reg)
 
 # Fit Random Forest, we run the algorithm in classification mode
 random_forest <- randomForest(as.factor(default_time) ~ ., data = train_data)
+
+
+
 
 # Get predictions for the testing set
 predicted_rf <- predict(random_forest, data = test_data) %>% as.character %>% as.numeric
@@ -238,9 +229,10 @@ random_forest$importance
 
 # ============================== LASSO Regression  ==============================
 
+
+
 # Run cross validation to find best lambda
 best_lambda <- cv.glmnet(x = train_data[ ,-17] %>% as.matrix, y = train_data[ ,17] , alpha = 1, family = "binomial")$lambda.min
-
 
 
 # Fit LASSO using lambda from cross validation. We select family = binomial for logistic regression
@@ -249,19 +241,9 @@ log_lasso <- glmnet(x = train_data[ ,-17] %>% as.matrix, y = train_data[ ,17] , 
 
 
 
+
 # Get predictions for the testing set
 predicted_lasso <- predict(log_lasso, newx = test_data[ ,-17] %>% as.matrix, s = best_lambda, type = "response")
-
-# How many did we get wrong / right
-prediction_matrix(predicted_lasso)
-
-# Compare with actual data, did we get something right?
-defaults_captured(predicted_lasso)
-
-# Compute MSE from probabilities
-mse_log <- mean((predicted_lasso - test_data$default_time) ^2)
-
-
 
 
 # Compare logistic lasso regression and neural network
@@ -276,5 +258,33 @@ plot(predicted_reg, predicted_lasso)
 
 
 
+
+
+
+# ============================== Comparison  ==============================
+
+# Compare the performance of the differnet methods. We evaluate at increasingly large datasets
+
+evaluate_model(nn)
+evaluate_model(log_reg)
+evaluate_model(log_lasso)
+
+
+# Reshuffle and draw larger testing data
+shuffle(n = 300000, ratio = 1/100)
+
+# In large samples, the NN performs much better
+evaluate_model(nn)
+evaluate_model(log_reg)
+evaluate_model(log_lasso)
+
+
+# Reshuffle and draw larger testing data
+shuffle(n = 500000, ratio = 1/100)
+
+# The fir seems to be stable, with a stable correct prediction rate
+evaluate_model(nn)
+evaluate_model(log_reg)
+evaluate_model(log_lasso)
 
 
