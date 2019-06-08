@@ -32,7 +32,7 @@ dat <- read.csv("/Users/Max/Dropbox/Risikomanagement/Uni/ML/LGD/mortgage.csv") %
 ## Remove NA observations
 dat <- dat[complete.cases(dat),]
 
-
+dat$age <- dat$time- dat$orig_time
 
 
 # Generate Neural Network ------------------------------------------
@@ -47,7 +47,7 @@ scaled_data <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = 
 
 
 # We select a subset of the data and split it into training and testing
-temp_data <- scaled_data[sample(1:nrow(scaled_data),3000),]
+temp_data <- scaled_data[sample(1:nrow(scaled_data),10000),]
 
 index <- sample(1:nrow(temp_data), (nrow(temp_data)*0.6) %>% ceiling)
 
@@ -57,7 +57,7 @@ test_data <- temp_data[-index, ][,-c(1,2,22,23)]
   
 
 # Fit neural network
-nn <- neuralnet(default_time ~ ., data = train_data, hidden = c(7,7), act.fct = "logistic", 
+nn <- neuralnet(default_time ~ ., data = train_data, hidden = 10, act.fct = "logistic", linear.output = F,
                 err.fct = "sse", lifesign = "full", threshold = 0.01, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
 
 
@@ -65,7 +65,9 @@ nn <- neuralnet(default_time ~ ., data = train_data, hidden = c(7,7), act.fct = 
 predicted = ifelse(predict(nn, test_data) > 0.5,1,0)
 table(predicted)
 
-# Compare with actual data
+# Compare with actual data, did we get something right?
+compare <- cbind(predicted, test_data$default_time)[which(test_data$default_time == 1),] %T>% print
+
 table(predicted == test_data$default_time)
 table(test_data$default_time)
 
@@ -75,14 +77,16 @@ table(test_data$default_time)
 log_reg <- glm(default_time ~ ., data = train_data, family = "binomial")
 
 
-pred <- ifelse(fitted(log_reg) > 0.5,1,0)
+pred <- ifelse(predict(log_reg, newdata = test_data) > 0.5,1,0)
+
+cbind(pred, test_data$default_time)[which(test_data$default_time == 1),]
 
 
-table(pred == train_data$default_time)
-table(dat$default_time)
+table(pred == test_data$default_time)
 
+plot(predict(nn, test_data),predict(log_reg, newdata = test_data) ) 
 
-
+min(predict(nn, test_data))
 
 
 
