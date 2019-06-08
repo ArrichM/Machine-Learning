@@ -47,7 +47,9 @@ scaled_data <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = 
 
 
 # We select a subset of the data and split it into training and testing
-temp_data <- scaled_data[sample(1:nrow(scaled_data),10000),]
+set.seed(100)
+
+temp_data <- scaled_data[sample(1:nrow(scaled_data),3000),]
 
 index <- sample(1:nrow(temp_data), (nrow(temp_data)*0.6) %>% ceiling)
 
