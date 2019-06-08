@@ -32,40 +32,8 @@ dat <- read.csv("/Users/Max/Dropbox/Risikomanagement/Uni/ML/LGD/mortgage.csv") %
 ## Remove NA observations
 dat <- dat[complete.cases(dat),]
 
+# Add age of position
 dat$age <- dat$time- dat$orig_time
-
-
-
-
-
-
-
-
-# ============================== Prepare Data ==============================
-
-
-# Scale data for neural network, we do not scale id and time
-max <-  apply(dat[,-c(1,2)], 2 , max)
-min <-  apply(dat[,-c(1,2)], 2 , min)
-scaled_data <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = min, scale = max - min)))
-
-
-# We select a subset of the data and split it into training and testing
-set.seed(100)
-
-# Sample n data at random
-temp_data <- scaled_data[sample(1:nrow(scaled_data),5000),]
-
-
-# Select 2/3 of the data as trainign data
-index <- sample(1:nrow(temp_data), (nrow(temp_data)*0.6) %>% ceiling)
-
-train_data <- temp_data[index,][,-c(1:4,22,23)]
-
-test_data <- temp_data[-index, ][,-c(1:4,22,23)]
-
-
-
 
 
 
@@ -78,8 +46,8 @@ fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_
   # Fit neural network
   if(create_network == F){
     #fit network
-    nn <- neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
-                    err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
+    nn <- try(neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
+                        err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2)))
   }else{
     #fit network and save to global environment
     nn <<-  neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
@@ -92,10 +60,35 @@ fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_
   
 }
 
+# Shuffle data and create training and testing set on the go
+shuffle <- function(n = 5000, data = scaled_data, ratio = 2/3, check = T){
+  
+
+  # Check function call
+  if(check != "none") check <- readline(prompt="Are you sure you want to redraw your testing and training data? [y/n] ")
+  
+  if(check %in% c("no","n")) return(NULL)
+  
+  if(check %in% c("yes","y","none")){
+    
+    # Sample n data at random
+    temp_data <- data[sample(1:nrow(data),n),]
+    
+    # Select ratio of the data as trainign data
+    index <- sample(1:nrow(temp_data), (nrow(temp_data)*ratio) %>% ceiling)
+    
+    # Assign training data in global environment
+    train_data <<- temp_data[index,][,-c(1:4,22,23)]
+    
+    # Assign testing data in global environment
+    test_data <<- temp_data[-index, ][,-c(1:4,22,23)]
+  }
+  
+}
 
 # Function to create prediction evaluation matrix
 prediction_matrix <- function(predictions, observations = test_data$default_time, tr = 0.5){
-
+  
   #transform to binary response
   predictions <- ifelse(predictions < tr, 0,1)
   observations <- ifelse(observations < tr, 0,1)
@@ -111,16 +104,39 @@ prediction_matrix <- function(predictions, observations = test_data$default_time
 }
 
 # Function to look up how many defaults we got right
-
 defaults_captured <- function(predictions, observations = test_data$default_time, tr = 0.5){
- 
+  
   #transform to binary response
   predictions <- ifelse(predictions < tr, 0,1)
   observations <- ifelse(observations < tr, 0,1)
   
   cbind(predictions, observations)[which(observations == 1),] %>% colSums %>% set_names(c("Predicted","Observed"))
-
+  
 }
+
+
+
+
+
+
+# ============================== Prepare Data ==============================
+
+
+# Scale data for neural network, we do not scale id and time
+max <-  apply(dat[,-c(1,2)], 2 , max)
+min <-  apply(dat[,-c(1,2)], 2 , min)
+scaled_data <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = min, scale = max - min)))
+
+# Set seed ro reproducibility
+set.seed(99)
+
+# We select a subset of the data and split it into training and testing
+shuffle(n = 5000, check = "none")
+
+
+
+
+
 
 
 
@@ -130,12 +146,12 @@ defaults_captured <- function(predictions, observations = test_data$default_time
 
 
 # Evaluate a number of possible layer / neuron combinations
-eval <- apply(expand.grid(4:10,3:6),1, fit_nn, tr = 0.02)
+eval <- apply(expand.grid(4:10,3:6),1, fit_nn, tr = 0.03)
 
 
 
 # Fit best network and save under name "nn"
-fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network = T)
+fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network = T, tr = 0.01)
 
 
 
@@ -191,6 +207,8 @@ plot(predicted_nn, predicted_reg)
 
 
 
+
+
 # ============================== Random Forest  ==============================
 
 # Fit Random Forest, we run the algorithm in classification mode
@@ -199,7 +217,13 @@ random_forest <- randomForest(as.factor(default_time) ~ ., data = train_data)
 # Get predictions for the testing set
 predicted_rf <- predict(random_forest, data = test_data)
 
+# How many did we get wrong / right
+prediction_matrix(predicted_rf)
 
+# Compare with actual data, did we get something right?
+defaults_captured(predicted_rf)
+
+# Importance of variables
 random_forest$importance
 
 
@@ -240,8 +264,7 @@ mse_log <- mean((predicted_lasso - test_data$default_time) ^2)
 
 
 
-
-# Compare logistic regression and neural network
+# Compare logistic lasso regression and neural network
 plot(predicted_nn, predicted_lasso)
 
 
