@@ -49,7 +49,7 @@ fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_
   
   # Fit neural network
     #fit network
-  nn <- try(neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,
+  nn <- try(neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,stepmax = 1e+07,
                       err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2)))
 
   if(create_network == F){
@@ -62,7 +62,7 @@ fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_
 }
 
 # Shuffle data and create training and testing set on the go
-shuffle <- function(n = 50000, data = scaled_data, ratio = 2/3, check = T){
+shuffle <- function(n = 5000, data = scaled_data, ratio = 2/3, check = T){
   
 
   # Check function call
@@ -157,11 +157,13 @@ shuffle(n = 5000, check = "none")
 # ============================== Neural Network  ==============================
 
 # Evaluate a number of possible layer / neuron combinations
-eval <- apply(expand.grid(4:10,3:6),1, fit_nn, tr = 0.03)
+eval <- apply(expand.grid(4:10,3:6),1, fit_nn, tr = 0.05)
 
+# Fit best network and save under name "nn". For the fitting, we draw a larger dataset
+set.seed(99)
+shuffle(n= 50000, check = "none")
 
-# Fit best network and save under name "nn"
-nn <- fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network = T, tr = 0.01)
+nn <- fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network = T, tr = 0.05)
 
 
 
