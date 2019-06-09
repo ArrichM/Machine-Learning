@@ -5,6 +5,12 @@
 # *************************************************************** #
 
 
+# SUMMARY #
+
+# This codes uses a dataset holding information about a mortgage portfolio comprised of 600 000 observations from US banks. The goal is to
+# to predict the probability of default using a neural network. As a benchmark model we use simple logistic regression, a widely used 
+# technique to estimate PDs. Furthermore we compre our results with those from a LASSO regression and a random forest.
+
 
 
 
@@ -49,7 +55,7 @@ fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_
   
   # Fit neural network
     #fit network
-  nn <- try(neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F,stepmax = 1e+07,
+  nn <- try(neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
                       err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2)))
 
   if(create_network == F){
@@ -233,7 +239,7 @@ random_forest$importance
 
 
 
-# Run cross validation to find best lambda
+# Run cross validation to find best lambda. Alpha = 1 gives lasso. ALpha = 0 gives ridge
 best_lambda <- cv.glmnet(x = train_data[ ,-17] %>% as.matrix, y = train_data[ ,17] , alpha = 1, family = "binomial")$lambda.min
 
 
@@ -284,7 +290,7 @@ evaluate_model(log_lasso)
 # Reshuffle and draw larger testing data
 shuffle(n = 500000, ratio = 1/100)
 
-# The fir seems to be stable, with a stable correct prediction rate
+# The fit seems to be stable, with a stable correct prediction rate
 evaluate_model(nn)
 evaluate_model(log_reg)
 evaluate_model(log_lasso)
