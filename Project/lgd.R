@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -40,12 +40,41 @@ dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
 
 # ============================== Initialize Functions  ==============================
 
+# Function to extarct and append lags to the dataframe
+get_lags <- function(c_id = 1, data = dat, lag = 2, lookup = c(6,7,8,9,10,11)){
+  
+  #get observations for obligor c_id
+  data <- data[which(data$id == c_id),]
+  
+  #check wheather enough observations are available
+  if(length(data$time) < lag+1) return(NULL)
+  
+  #function to extract lags and append to row
+  bind_lags <- function(t){
+    cbind(data[which(data$time == t),],
+          apply(data[which(data$time %in%  (t-lag):(t-1)), lookup],2, function(x) as.character(x) %>% as.numeric) %>% matrix(ncol = length(lookup)*lag) %>% 
+            set_colnames( paste0(rep(colnames(data)[lookup], each = lag),"-L",rep(1:lag,length(lookup))) ))
+  }
+  
+  #extract lags and append to row for each observed time
+  sapply(unique(data$time) %>% tail( n = -lag),bind_lags) %>% t
+  
+}
 
-# Shuffle data and create training and testing set on the go
-shuffle <- function(n = nrow(dat), data = dat, ratio = 2/3){
+# Shuffle data and create training and testing set on the go. Also we do a number of manipulations to improve performance
+shuffle <- function(n = nrow(dat), data = dat, ratio = 2/3, lags = NULL, unwanted = c(1:2,22,23), col_to_lag = c(6,7,8,9,10,11)){
   
   # Sample n data at random
-  temp_data <- data[sample(1:nrow(data),n),]
+  if(is.null(lags) == T) temp_data <- data[sample(1:nrow(data),n),]
+  
+  # Add lags if desired
+  if(is.null(lags) == F){
+    temp_data <- lapply(sample(unique(data$id),n), get_lags, lag = lags, lookup = col_to_lag) %>% do.call(what = rbind) %>% as.data.frame
+    temp_data <- apply(temp_data,2, function(x) as.character(x) %>% as.numeric)
+  }
+  
+  # Remove unwanted columns
+  temp_data <- temp_data[,-unwanted]
   
   # Scale data for neural network, we do not scale id and time
   min <- apply(temp_data, 2 , min)
@@ -61,6 +90,7 @@ shuffle <- function(n = nrow(dat), data = dat, ratio = 2/3){
   
   # Assign testing data in global environment
   test_data <<- temp_data[-index, ]
+
 
 }
 
@@ -142,28 +172,19 @@ plot_evaluation <- function(evaluate_model_object){ # Insert valuation metrics
 
 
 
-
-
 # ============================== Prepare Data ==============================
 
 ## Remove NA observations
 dat <- dat[complete.cases(dat),]
+
 # Add age of position
 dat$age <- dat$time- dat$orig_time
-# Remove unwanted columns
-dat <- dat[,-c(1:2,22,23)]
 
 
 
 
-# We select a subset of the data and split it into training and testing
-shuffle(n = 5000)
-
-
-
-
-
-
+# We select n obligors at random and append t lags to the dataset in order to account for time effects
+shuffle(n = 10, lags = 3)
 
 
 
@@ -172,7 +193,7 @@ shuffle(n = 5000)
 
 
 # Fit neural network with 7 neurons in one layer
-nn <- neuralnet(default_time ~ ., data = train_data, hidden = 7, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
+nn <- neuralnet(default_time ~ ., data = train_data, hidden = 15, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
                       err.fct = "sse", lifesign = "full", threshold = 0.05, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
   
 # Get predictions for the testing set
@@ -192,6 +213,7 @@ evaluate_model(list(nn), modelname = c("Neural Network"))
 
 # ============================== Logistic Regression  ==============================
 
+shuffle(600000)
 
 #We perform logistic regression as benchmark model
 log_reg <- glm(default_time ~ ., data = train_data, family = binomial())
@@ -291,6 +313,8 @@ best_lambda <- cv.glmnet(x = train_data[ ,-19] %>% as.matrix, y = train_data[ ,1
 
 # Fit LASSO using lambda from cross validation. We select family = binomial for logistic regression
 log_lasso <- glmnet(x = train_data[ ,-19] %>% as.matrix, y = train_data[ ,19] , alpha = 1, family = "binomial", lambda = best_lambda)
+
+log_lasso$beta
 
 
 # Get predictions for the testing set
