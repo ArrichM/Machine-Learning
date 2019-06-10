@@ -34,61 +34,29 @@ setwd(wd)
 set.seed(100)
 ## Read Data from CSV
 dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
-## Remove NA observations
-dat <- dat[complete.cases(dat),]
-
-## Add age of position
-dat$age <- dat$time- dat$orig_time
-
-# How many observations do we want to use for evaluation of the different techniques? Samll number for higher speed of convergence
-n_run <- 5000
-
 
 
 
 
 # ============================== Initialize Functions  ==============================
 
-# Function to conveniently fit neural network. We will use this later on to evaluate a large number of layer / neuron combinations
-fit_nn <- function(layers = c(1,1), train_data1 = train_data, test_data1 = test_data, tr = 0.02, create_network = F){
-  
-  # Fit neural network
-    #fit network
-  nn <- try(neuralnet(default_time ~ ., data = train_data1, hidden = layers, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
-                      err.fct = "sse", lifesign = "full", threshold = tr, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2)))
-
-  if(create_network == F){
-    # Compute MSE from probabilities
-    return(((predict(nn, test_data1) - test_data$default_time) ^2) %>% mean)
-  }else{
-    return(nn)
-  }
-  
-}
 
 # Shuffle data and create training and testing set on the go
-shuffle <- function(n = nrow(dat), data = scaled_data, ratio = 2/3, check = T){
+shuffle <- function(n = nrow(dat), data = scaled_data, ratio = 2/3){
   
 
-  # Check function call
-  if(check != "none") check <- readline(prompt="Are you sure you want to redraw your testing and training data? [y/n] ")
+  # Sample n data at random
+  temp_data <- data[sample(1:nrow(data),n),]
   
-  if(check %in% c("no","n")) return(NULL)
+  # Select ratio of the data as trainign data
+  index <- sample(1:nrow(temp_data), (nrow(temp_data)*ratio) %>% ceiling)
   
-  if(check %in% c("yes","y","none")){
-    
-    # Sample n data at random
-    temp_data <- data[sample(1:nrow(data),n),]
-    
-    # Select ratio of the data as trainign data
-    index <- sample(1:nrow(temp_data), (nrow(temp_data)*ratio) %>% ceiling)
-    
-    # Assign training data in global environment
-    train_data <<- temp_data[index,][,-c(1:4,22,23)]
-    
-    # Assign testing data in global environment
-    test_data <<- temp_data[-index, ][,-c(1:4,22,23)]
-  }
+  # Assign training data in global environment
+  train_data <<- temp_data[index,]
+  
+  # Assign testing data in global environment
+  test_data <<- temp_data[-index, ]
+
   
 }
 
@@ -110,17 +78,15 @@ prediction_matrix <- function(predictions, observations = test_data$default_time
 }
 
 # Function to evaluate performance of models. Always enter models in form of lists
-evaluate_model <- function(model=list(...), modelnames = c(),observations = test_data$default_time, best_lamb = best_lambda, tr = 0.5){ #modelname added
- 
-
+evaluate_model <- function(model=list(...), modelname, observations = test_data$default_time, best_lamb = best_lambda, tr = 0.5){ #modelname added
+  
+  
   
   n = length(model)
   tables    = list()
   metrics   = list()
-  
   #transform to binary response
   for (i in 1:n){
-    
     #get predictions from the model
     if(grepl("lasso", deparse(substitute(model))) ){
       predictions <- predict(model, newx = test_data[ ,-17] %>% as.matrix, s = best_lamb, type = "response")
@@ -128,7 +94,6 @@ evaluate_model <- function(model=list(...), modelnames = c(),observations = test
     }else{  
       predictions <- as.integer(predict(model[[i]], newdata=test_data))-1#, type = "response")
     }
-    
     predictions_bin <- ifelse(predictions < tr, 0,1)
     
     table  <- prediction_matrix(predictions)
@@ -147,12 +112,11 @@ evaluate_model <- function(model=list(...), modelnames = c(),observations = test
     
     mse_cont    <- (predictions-observations) ^2 %>% mean
     mse_bin     <- (predictions-observations) ^2 %>% mean
-    metrics[[i]]<- data.frame(Model = modelnames, TRP = TRP, TNR=TNR, ACC=ACC, Precision=Prec, Recall=Recall, MSE_cont = mse_cont, MSE_bin=mse_bin)
+    metrics[[i]]<- data.frame(Model = modelname[i], TRP = TRP, TNR=TNR, ACC=ACC, Precision=Prec, Recall=Recall, MSE_cont = mse_cont, MSE_bin=mse_bin)
     tables[[i]] <- table
   }
   
-  names(tables) <- modelnames
-  
+  names(tables) <- modelname
   metrics_all   <- do.call(rbind, metrics)
   
   list(tables, metrics_all)
@@ -178,15 +142,24 @@ plot_evaluation <- function(evaluate_model_object){ # Insert valuation metrics
 
 # ============================== Prepare Data ==============================
 
-# Scale data for neural network, we do not scale id and time
-max <-  apply(dat[,-c(1,2)], 2 , max)
-min <-  apply(dat[,-c(1,2)], 2 , min)
-scaled_data <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = min, scale = max - min)))
+## Remove NA observations
+dat <- dat[complete.cases(dat),]
+# Add age of position
+dat$age <- dat$time- dat$orig_time
+# Remove unwanted columns
+dat <- dat[,-c(1:2,22,23)]
 
-# Set seed ro reproducibility
+
+# Scale data for neural network, we do not scale id and time
+
+min <- apply(dat, 2 , min)
+max <- apply(dat, 2 , max)
+
+scaled_data <-  as.data.frame(scale(dat, center = min, scale = max - min))
+  
 
 # We select a subset of the data and split it into training and testing
-shuffle(n = n_run, check = "none")
+shuffle(n = 5000)
 
 
 
@@ -199,19 +172,17 @@ shuffle(n = n_run, check = "none")
 
 # ============================== Neural Network  ==============================
 
-# Evaluate a number of possible layer / neuron combinations
-eval <- apply(expand.grid(4:10,3:6),1, fit_nn, tr = 0.05)
 
-# Fit best network and save under name "nn". For the fitting, we draw a larger dataset
-set.seed(99)
-shuffle(n= n_run, check = "none")
-
-nn <- fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network = T, tr = 0.05)
-
-
-
+# Fit neural network with 7 neurons in one layer
+nn <- neuralnet(default_time ~ ., data = train_data, hidden = 7, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
+                      err.fct = "sse", lifesign = "full", threshold = 0.05, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
+  
 # Get predictions for the testing set
-evaluate_model(list(nn) , modelnames = "NN") 
+evaluate_model(list(nn), modelname = c("Neural Network")) 
+
+
+
+
 
 
 
@@ -223,20 +194,15 @@ evaluate_model(list(nn) , modelnames = "NN")
 
 # ============================== Logistic Regression  ==============================
 
+
 #We perform logistic regression as benchmark model
 log_reg <- glm(default_time ~ ., data = train_data, family = binomial())
-
-
-
 
 # Get predictions for the testing set
 predicted_reg <- predict(log_reg, newdata = test_data, type = "response")
 
-
 # Compare logistic regression and neural network
-#plot(predicted_nn, predicted_reg)
 evaluate_model(list(log_reg, nn), modelname = c( "Logistic Regression", "Neural Network"))
-
 
 
 
@@ -244,7 +210,6 @@ evaluate_model(list(log_reg, nn), modelname = c( "Logistic Regression", "Neural 
 
 # == Alternative: Boosted Logistic Regression ==
 
-shuffle(10000)
 
 # initialize cross validation Folds. Here we use 5-fold cross validation, repeated 3 times
 fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 3)  
@@ -261,13 +226,22 @@ evaluate_model(list(log_reg, nn, logitboost_fit), modelname = c("Logistic Regres
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 # ============================== Random Forest  ==============================
 
 # Fit Random Forest, we run the algorithm in classification mode
 random_forest <- randomForest(as.factor(default_time) ~ ., data = train_data)
-
-
-
 
 # Get predictions for the testing set
 predicted_rf <- predict(random_forest, data = test_data) %>% as.character %>% as.numeric
@@ -283,7 +257,10 @@ random_forest$importance
 evaluate_model(list(log_reg, nn, logitboost_fit, random_forest), modelname = c("Logistic Regression", "Neural Network", "LogitBoost", "untrained RF"))
 
 
-#=============================== Alternative Way to get Random Forrest via cross validation =========================
+
+
+
+# == Alternative Way to get Random Forrest via cross validation ==
 
 rf_fit     <- caret::train(as.factor(default_time) ~ ., data=train_data, method="ranger", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
 
@@ -298,38 +275,43 @@ evaluate_model(list(log_reg, nn, logitboost_fit, random_forest, rf_fit), modelna
 
 
 
+
+
+
+
+
+
+
+
 # ============================== LASSO Regression  ==============================
 
 
 
 # Run cross validation to find best lambda. Alpha = 1 gives lasso. ALpha = 0 gives ridge
-best_lambda <- cv.glmnet(x = train_data[ ,-17] %>% as.matrix, y = train_data[ ,17] , alpha = 1, family = "binomial")$lambda.min
+best_lambda <- cv.glmnet(x = train_data[ ,-19] %>% as.matrix, y = train_data[ ,19] , alpha = 1, family = "binomial")$lambda.min
 
 
 # Fit LASSO using lambda from cross validation. We select family = binomial for logistic regression
-log_lasso <- glmnet(x = train_data[ ,-17] %>% as.matrix, y = train_data[ ,17] , alpha = 1, family = "binomial", lambda = best_lambda)
-
-
-
+log_lasso <- glmnet(x = train_data[ ,-19] %>% as.matrix, y = train_data[ ,19] , alpha = 1, family = "binomial", lambda = best_lambda)
 
 
 # Get predictions for the testing set
-predicted_lasso <- predict(log_lasso, newx = test_data[ ,-17] %>% as.matrix, s = best_lambda, type = "response")
+predicted_lasso <- predict(log_lasso, newx = test_data[ ,-19] %>% as.matrix, s = best_lambda, type = "response")
 
 
-# Compare logistic lasso regression and neural network
-plot(predicted_nn, predicted_lasso)
 
-# Compare logistic lasso regression and logistic regression
 
-plot(predicted_reg, predicted_lasso)
+
+
 
 
 
 
 # ============================== glmboost  ==============================
 
-glm_fit     <- caret::train(as.factor(default_time) ~ ., data=train_data, method="glmboost", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
+shuffle(50000)
+
+glm_fit     <- caret::train(as.factor(default_time) ~ ., data=train_data, method="glmboost", trControl = fitControl) 
 
 # Looking at how accuracy increases over the training procedure
 plot(glm_fit) 
@@ -340,32 +322,36 @@ metrics
 plot_evaluation(metrics)
 
 
-there_are_no_errors <- F
-if(there_are_no_errors){
-  # ============================== Comparison  ==============================
-  
-  # Compare the performance of the differnet methods. We evaluate at increasingly large datasets
-  
-  evaluate_model(nn, modelname = "nn")
-  evaluate_model(log_reg)
-  evaluate_model(log_lasso)
-  
-  
-  # Reshuffle and draw larger testing data
-  shuffle(n = 300000, ratio = 1/100)
-  
-  # In large samples, the NN performs much better
-  evaluate_model(nn)
-  evaluate_model(log_reg)
-  evaluate_model(log_lasso)
-  
-  
-  # Reshuffle and draw larger testing data
-  shuffle(n = 500000, ratio = 1/100)
-  
-  # The fit seems to be stable, with a stable correct prediction rate
-  evaluate_model(nn)
-  evaluate_model(log_reg)
-  evaluate_model(log_lasso)
-}
+
+
+
+
+
+
+
+# ============================== Comparison  ==============================
+
+# Compare the performance of the differnet methods. We evaluate at increasingly large datasets
+
+evaluate_model(nn, modelname = "nn")
+evaluate_model(log_reg)
+evaluate_model(log_lasso)
+
+
+# Reshuffle and draw larger testing data
+shuffle(n = 300000, ratio = 1/100)
+
+# In large samples, the NN performs much better
+evaluate_model(nn)
+evaluate_model(log_reg)
+evaluate_model(log_lasso)
+
+
+# Reshuffle and draw larger testing data
+shuffle(n = 500000, ratio = 1/100)
+
+# The fit seems to be stable, with a stable correct prediction rate
+evaluate_model(nn)
+evaluate_model(log_reg)
+evaluate_model(log_lasso)
 
