@@ -36,20 +36,12 @@ set.seed(100)
 dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
 ## Remove NA observations
 dat <- dat[complete.cases(dat),]
-
-# Add age of position
+## Add age of position
 dat$age <- dat$time- dat$orig_time
 
-# For speed and convenience we often use a smaller subset of the whole data. Specify if you want to use the whole set or a subset
-dataset_type <- askYesNo("Do you want to use a subset of the data to increase speed instead of the whole set?")
+# How many observations do we want to use for evaluation of the different techniques? Samll number for higher speed of convergence
+n_run <- 5000
 
-if(dataset_type==TRUE){
-  reduced_data <- createDataPartition(y=dat$default_time, p=1/220, list=FALSE) # randomly shrinks dataset to n= 3000 datapoints
-  dat          <- dat[ reduced_data,]
-} else {return(0)}
-
-n <- nrow(dat)
-n
 
 
 
@@ -78,11 +70,11 @@ shuffle <- function(n = nrow(dat), data = scaled_data, ratio = 2/3, check = T){
   
 
   # Check function call
-  if(check != "none") check <- readline(prompt="Are you sure you want to redraw your testing and training data? [y/n] ")
+  if(check != "none") check <- askYesNo("Are you sure you want to redraw your testing and training data? [y/n] ")
   
-  if(check %in% c("no","n")) return(NULL)
+  if(check == F) return(NULL)
   
-  if(check %in% c("yes","y","none")){
+  if(check == T){
     
     # Sample n data at random
     temp_data <- data[sample(1:nrow(data),n),]
@@ -117,15 +109,17 @@ prediction_matrix <- function(predictions, observations = test_data$default_time
 }
 
 # Function to evaluate performance of models. Always enter models in form of lists
-evaluate_model <- function(model=list(...), modelname, observations = test_data$default_time, best_lamb = best_lambda, tr = 0.5){ #modelname added
+evaluate_model <- function(model=list(...), observations = test_data$default_time, best_lamb = best_lambda, tr = 0.5){ #modelname added
  
 
   
   n = length(model)
   tables    = list()
   metrics   = list()
+  
   #transform to binary response
   for (i in 1:n){
+    
     #get predictions from the model
     if(grepl("lasso", deparse(substitute(model))) ){
       predictions <- predict(model, newx = test_data[ ,-17] %>% as.matrix, s = best_lamb, type = "response")
@@ -133,6 +127,7 @@ evaluate_model <- function(model=list(...), modelname, observations = test_data$
     }else{  
       predictions <- as.integer(predict(model[[i]], newdata=test_data))-1#, type = "response")
     }
+    
     predictions_bin <- ifelse(predictions < tr, 0,1)
     
     table  <- prediction_matrix(predictions)
@@ -155,17 +150,16 @@ evaluate_model <- function(model=list(...), modelname, observations = test_data$
     tables[[i]] <- table
   }
   
-  names(tables) <- modelname
+  names(tables) <- sapply(model, function(x) deparse(substitute(x)))
+  
   metrics_all   <- do.call(rbind, metrics)
   
   list(tables, metrics_all)
   #return(list(matrix = mat, detected_defaults = detected_defaults, mse_cont = mse_cont, mse_bin = mse_bin))
 }
 
-
 # Feed with input from evaluate_model
-
-plot.evaluation <- function(evaluate_model_object){ # Insert valuation metrics
+plot_evaluation <- function(evaluate_model_object){ # Insert valuation metrics
   
   metrics_all <- tail(evaluate_model_object,1)
   df <- gather(metrics_all[[1]][, 1:5], key="metric", value="value", -Model) # Bringing in correct shape to feed into ggplot
@@ -191,8 +185,7 @@ scaled_data <-  cbind(dat[,c(1,2)], as.data.frame(scale(dat[,-c(1,2)], center = 
 # Set seed ro reproducibility
 
 # We select a subset of the data and split it into training and testing
-shuffle(n = n, check = "none")
-
+shuffle(n = n_run, check = "none")
 
 
 
@@ -209,7 +202,7 @@ eval <- apply(expand.grid(4:10,3:6),1, fit_nn, tr = 0.05)
 
 # Fit best network and save under name "nn". For the fitting, we draw a larger dataset
 set.seed(99)
-shuffle(n= n, check = "none")
+shuffle(n= n_run, check = "none")
 
 nn <- fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network = T, tr = 0.05)
 
@@ -346,7 +339,7 @@ plot(glm_fit)
 # Lets look how it performs on the test sample.
 metrics <- evaluate_model(list(log_reg, nn, logitboost_fit, random_forest, rf_fit, glm_fit), modelname = c("Logistic Regression", "Neural Network", "LogitBoost", "untrained RF", "trained RF", "GLM Boost"))
 metrics 
-plot.evaluation(metrics)
+plot_evaluation(metrics)
 
 
 there_are_no_errors <- F
