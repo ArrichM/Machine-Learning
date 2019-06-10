@@ -33,7 +33,7 @@ wd <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(wd)
 set.seed(100)
 ## Read Data from CSV
-dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
+#dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
 
 
 
@@ -47,17 +47,20 @@ get_lags <- function(c_id = 1, data = dat, lag = 2, lookup = c(6,7,8,9,10,11)){
   data <- data[which(data$id == c_id),]
   
   #check wheather enough observations are available
-  if(length(data$time) < lag+1) return(NULL)
-  
+  if(length(data$time) < lag+1) return( matrix(NA, ncol = ncol(data) + length(lookup) * lag) )
+
   #function to extract lags and append to row
   bind_lags <- function(t){
-    cbind(data[which(data$time == t),],
-          apply(data[which(data$time %in%  (t-lag):(t-1)), lookup],2, function(x) as.character(x) %>% as.numeric) %>% matrix(ncol = length(lookup)*lag) %>% 
+    cbind(data[which(data$time == data$time[t]),],
+          apply(data[which(data$time %in%  data$time[(t-1):(t-lag)] ), lookup],2, function(x) as.character(x) %>% as.numeric) %>% matrix(ncol = length(lookup)*lag) %>% 
             set_colnames( paste0(rep(colnames(data)[lookup], each = lag),"-L",rep(1:lag,length(lookup))) ))
   }
   
   #extract lags and append to row for each observed time
-  sapply(unique(data$time) %>% tail( n = -lag),bind_lags) %>% t
+  out <- sapply(1:length(data$time) %>% tail(n = -3) ,bind_lags) %>% t
+  
+  print(c(c_id, ncol(out)))
+  return(out)
   
 }
 
@@ -69,8 +72,17 @@ shuffle <- function(n = nrow(dat), data = dat, ratio = 2/3, lags = NULL, unwante
   
   # Add lags if desired
   if(is.null(lags) == F){
-    temp_data <- lapply(sample(unique(data$id),n), get_lags, lag = lags, lookup = col_to_lag) %>% do.call(what = rbind) %>% as.data.frame
-    temp_data <- apply(temp_data,2, function(x) as.character(x) %>% as.numeric)
+    
+    #append lags
+    temp_data <- lapply(sample(unique(data$id),n), get_lags, lag = lags, lookup = col_to_lag, data = data) %>% do.call(what = rbind) %>% as.matrix
+    
+    #transform to numeric
+    temp_data <- apply(temp_data, 2 , function(x) as.character(x) %>% as.numeric)
+    
+    #remove NA
+    temp_data <- temp_data[complete.cases(temp_data),]
+   
+    
   }
   
   # Remove unwanted columns
@@ -184,7 +196,8 @@ dat$age <- dat$time- dat$orig_time
 
 
 # We select n obligors at random and append t lags to the dataset in order to account for time effects
-shuffle(n = 10, lags = 3)
+shuffle(n = 100, lags = 3)
+
 
 
 
@@ -210,10 +223,8 @@ evaluate_model(list(nn), modelname = c("Neural Network"))
 
 
 
-
 # ============================== Logistic Regression  ==============================
 
-shuffle(600000)
 
 #We perform logistic regression as benchmark model
 log_reg <- glm(default_time ~ ., data = train_data, family = binomial())
