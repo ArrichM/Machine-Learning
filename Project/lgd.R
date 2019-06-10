@@ -42,11 +42,16 @@ dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
 
 
 # Shuffle data and create training and testing set on the go
-shuffle <- function(n = nrow(dat), data = scaled_data, ratio = 2/3){
+shuffle <- function(n = nrow(dat), data = dat, ratio = 2/3){
   
-
   # Sample n data at random
   temp_data <- data[sample(1:nrow(data),n),]
+  
+  # Scale data for neural network, we do not scale id and time
+  min <- apply(temp_data, 2 , min)
+  max <- apply(temp_data, 2 , max)
+  
+  temp_data <-  as.data.frame(scale(temp_data, center = min, scale = max - min))
   
   # Select ratio of the data as trainign data
   index <- sample(1:nrow(temp_data), (nrow(temp_data)*ratio) %>% ceiling)
@@ -57,7 +62,6 @@ shuffle <- function(n = nrow(dat), data = scaled_data, ratio = 2/3){
   # Assign testing data in global environment
   test_data <<- temp_data[-index, ]
 
-  
 }
 
 # Function to create prediction evaluation matrix
@@ -150,13 +154,7 @@ dat$age <- dat$time- dat$orig_time
 dat <- dat[,-c(1:2,22,23)]
 
 
-# Scale data for neural network, we do not scale id and time
 
-min <- apply(dat, 2 , min)
-max <- apply(dat, 2 , max)
-
-scaled_data <-  as.data.frame(scale(dat, center = min, scale = max - min))
-  
 
 # We select a subset of the data and split it into training and testing
 shuffle(n = 5000)
