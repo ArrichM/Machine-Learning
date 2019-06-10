@@ -52,8 +52,7 @@ get_lags <- function(c_id = 1, data = dat, lag = 2, lookup = c(6,7,8,9,10,11)){
   #function to extract lags and append to row
   bind_lags <- function(t){
     cbind(data[which(data$time == data$time[t]),],
-          apply(data[which(data$time %in%  data$time[(t-1):(t-lag)] ), lookup],2, function(x) as.character(x) %>% as.numeric) %>% matrix(ncol = length(lookup)*lag) %>% 
-            set_colnames( paste0(rep(colnames(data)[lookup], each = lag),"-L",rep(1:lag,length(lookup))) ))
+          apply(data[which(data$time %in%  data$time[(t-1):(t-lag)] ), lookup],2, function(x) as.character(x) %>% as.numeric) %>% matrix(ncol = length(lookup)*lag) )
   }
   
   #extract lags and append to row for each observed time
@@ -80,7 +79,8 @@ shuffle <- function(n = nrow(dat), data = dat, ratio = 2/3, lags = NULL, unwante
     temp_data <- apply(temp_data, 2 , function(x) as.character(x) %>% as.numeric)
     
     #remove NA
-    temp_data <- temp_data[complete.cases(temp_data),]
+    temp_data <- temp_data[complete.cases(temp_data),] %>% set_colnames( c(colnames(dat),
+      paste0(rep(colnames(dat)[col_to_lag], each = lags),"-L",rep(1:lags,length(col_to_lag))) ) )
    
     
   }
@@ -192,11 +192,16 @@ dat <- dat[complete.cases(dat),]
 # Add age of position
 dat$age <- dat$time- dat$orig_time
 
-
-
-
 # We select n obligors at random and append t lags to the dataset in order to account for time effects
-shuffle(n = 100, lags = 3)
+shuffle(n = 1000, lags = 3)
+
+
+# Very dirty workaround for the column selectino problem
+write.table(test_data, file = "temp.csv")
+test_data <- read.table("temp.csv")
+
+write.table(train_data, file = "temp.csv")
+train_data <- read.table("temp.csv")
 
 
 
@@ -205,9 +210,10 @@ shuffle(n = 100, lags = 3)
 # ============================== Neural Network  ==============================
 
 
+
 # Fit neural network with 7 neurons in one layer
 nn <- neuralnet(default_time ~ ., data = train_data, hidden = 15, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
-                      err.fct = "sse", lifesign = "full", threshold = 0.05, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
+                      err.fct = "sse", lifesign = "full", threshold = 0.01, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
   
 # Get predictions for the testing set
 evaluate_model(list(nn), modelname = c("Neural Network")) 
@@ -253,9 +259,7 @@ trellis.par.set(caretTheme())
 plot(logitboost_fit) 
 
 # 
-evaluate_model(list(log_reg, nn, logitboost_fit), modelname = c("Logistic Regression", "Neural Network", "LogitBoost"))
-
-
+evaluate_model(list(log_reg, logitboost_fit), modelname = c("Logistic Regression", "LogitBoost"))
 
 
 
