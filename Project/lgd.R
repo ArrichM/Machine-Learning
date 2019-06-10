@@ -36,6 +36,7 @@ set.seed(100)
 dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
 ## Remove NA observations
 dat <- dat[complete.cases(dat),]
+
 ## Add age of position
 dat$age <- dat$time- dat$orig_time
 
@@ -70,11 +71,11 @@ shuffle <- function(n = nrow(dat), data = scaled_data, ratio = 2/3, check = T){
   
 
   # Check function call
-  if(check != "none") check <- askYesNo("Are you sure you want to redraw your testing and training data? [y/n] ")
+  if(check != "none") check <- readline(prompt="Are you sure you want to redraw your testing and training data? [y/n] ")
   
-  if(check == F) return(NULL)
+  if(check %in% c("no","n")) return(NULL)
   
-  if(check == T){
+  if(check %in% c("yes","y","none")){
     
     # Sample n data at random
     temp_data <- data[sample(1:nrow(data),n),]
@@ -109,7 +110,7 @@ prediction_matrix <- function(predictions, observations = test_data$default_time
 }
 
 # Function to evaluate performance of models. Always enter models in form of lists
-evaluate_model <- function(model=list(...), observations = test_data$default_time, best_lamb = best_lambda, tr = 0.5){ #modelname added
+evaluate_model <- function(model=list(...), modelnames = c(),observations = test_data$default_time, best_lamb = best_lambda, tr = 0.5){ #modelname added
  
 
   
@@ -146,11 +147,11 @@ evaluate_model <- function(model=list(...), observations = test_data$default_tim
     
     mse_cont    <- (predictions-observations) ^2 %>% mean
     mse_bin     <- (predictions-observations) ^2 %>% mean
-    metrics[[i]]<- data.frame(Model = modelname[i], TRP = TRP, TNR=TNR, ACC=ACC, Precision=Prec, Recall=Recall, MSE_cont = mse_cont, MSE_bin=mse_bin)
+    metrics[[i]]<- data.frame(Model = modelnames, TRP = TRP, TNR=TNR, ACC=ACC, Precision=Prec, Recall=Recall, MSE_cont = mse_cont, MSE_bin=mse_bin)
     tables[[i]] <- table
   }
   
-  names(tables) <- sapply(model, function(x) deparse(substitute(x)))
+  names(tables) <- modelnames
   
   metrics_all   <- do.call(rbind, metrics)
   
@@ -195,6 +196,7 @@ shuffle(n = n_run, check = "none")
 
 
 
+
 # ============================== Neural Network  ==============================
 
 # Evaluate a number of possible layer / neuron combinations
@@ -209,7 +211,7 @@ nn <- fit_nn(expand.grid(4:10,3:6)[which.min(eval),] %>% unlist, create_network 
 
 
 # Get predictions for the testing set
-evaluate_model(list(nn), modelname = c("Neural Network")) 
+evaluate_model(list(nn) , modelnames = "NN") 
 
 
 
@@ -242,11 +244,7 @@ evaluate_model(list(log_reg, nn), modelname = c( "Logistic Regression", "Neural 
 
 # == Alternative: Boosted Logistic Regression ==
 
-# Here we use a very handy package to perform k-fold cross validation. The package requires its own training and testing sample splitting procedure
-intrain <- createDataPartition(y=dat$default_time, p=2/3, list=FALSE) # splits the data according to y argument and ensures that calls distribution of the data remains
-str(intrain) # Output is a set of integers for the rows of dat that belong to the training set
-train_data <- dat[ intrain,]
-test_data  <- dat[-intrain,]
+shuffle(10000)
 
 # initialize cross validation Folds. Here we use 5-fold cross validation, repeated 3 times
 fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 3)  
