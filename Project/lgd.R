@@ -171,7 +171,8 @@ plot.evaluation <- function(evaluate_model_object){ # Insert valuation metrics
   df <- gather(metrics_all[[1]][, 1:5], key="metric", value="value", -Model) # Bringing in correct shape to feed into ggplot
   ggplot(data=df, aes(x=Model, y=value, color=Model, fill=Model))+ #https://www.r-graph-gallery.com/48-grouped-barplot-with-ggplot2/
     geom_bar(stat="identity")+
-    facet_wrap(~metric)
+    facet_wrap(~metric)+
+    theme_light()
 }
 
 
