@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel", "corrplot", "pROC")
+toload <- c("magrittr","plyr","reshape2","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -28,12 +28,14 @@ sapply(toload, require, character.only = TRUE)
 
 # ============================== Read Data  ==============================
 
+rm(list=ls())
+
 ## Working Directory Setting
-wd <- dirname(rstudioapi::getSourceEditorContext()$path)
-setwd(wd)
+dirname(rstudioapi::getSourceEditorContext()$path) %>% setwd
+
 set.seed(100)
 ## Read Data from CSV
-dat <- read.csv(paste0(wd, "/Data/mortgage.csv"))
+dat <- read.csv( "Data/mortgage.csv")
 
 
 
@@ -174,7 +176,61 @@ plot_evaluation <- function(evaluate_model_object){ # Insert valuation metrics
     theme_light()
 }
 
-# ROC plot for comparison
+
+
+
+
+# ============================== Prepare Data ==============================
+
+## Remove NA observations
+dat <- dat[complete.cases(dat),]
+
+# Add age of position
+dat$age <- dat$time- dat$orig_time
+
+# Undersample non-defaults from the whole dataset. Holdout testing data right away
+shuffle(nrow(dat), ratio = 3/4)
+
+# Do undersampling of nondefaults
+def_data <- train_data[which(train_data$default_time == 1),]
+liv_data <- train_data[which(train_data$default_time == 0),]
+train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
+
+
+
+
+
+
+# ============================== Run different caret models ==============================
+
+
+# Create fit constrol object which will control all models. We balance our dataset using the smote algortihm
+fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 5, classProbs = TRUE,
+                           summaryFunction=twoClassSummary, 
+                           savePredictions = T)
+
+# We specify the desired models
+models_to_run <- list("LogitBoost","glmboost","multinom","avNNet")
+
+
+# Set up cluster for parallel computing during CV
+cl <- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+#shuffle(6000)
+
+# Carry out model fitting using CV
+caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
+                                                            data=train_data, method= x, trControl = fitControl, metric = "ROC") )
+
+# Stop Cluster
+
+stopCluster(cl)
+
+metrics <- evaluate_model(caret_fit, modelname = unlist(models_to_run)) %T>% print
+
+# Function plotting of ROCs
+
 ROC_plot <- function(caret_fit, modelname=models_to_run){
   models_to_run = unlist(modelname)
   preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
@@ -190,7 +246,6 @@ ROC_plot <- function(caret_fit, modelname=models_to_run){
   
 }
 
-# Hist plots
 hist_plot <- function(caret_fit, modelname=models_to_run){
   models_to_run = unlist(modelname)
   preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
@@ -203,73 +258,23 @@ hist_plot <- function(caret_fit, modelname=models_to_run){
 }
 
 
-
-# ============================== Prepare Data ==============================
-
-## Remove NA observations
-dat <- dat[complete.cases(dat),]
-
-# Add age of position
-dat$age <- dat$time- dat$orig_time
-
-# We select n obligors at random and append t lags to the dataset in order to account for time effects
-shuffle(n = 3000)
-
-
-
-
-
-
-
-# ============================== Run different caret models ==============================
-
-
-# Create fit constrol object which will control all models. We balance our dataset using the smote algortihm
-fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 5, sampling = "smote", classProbs = TRUE,
-                           summaryFunction=twoClassSummary, 
-                           savePredictions = T)
-
-# We specify the desired models
-models_to_run <- list("LogitBoost","glmboost","multinom","avNNet","gamboost")
-
-
-shuffle(10000)
-
-# Set up cluster for parallel computing during CV
-cl <- makePSOCKcluster(detectCores())
-registerDoParallel(cl)
-
-# Carry out model fitting using CV
-caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
-                                                            data=train_data, method= x, trControl = fitControl, metric = "ROC") )
-
-# Stop Cluster
-stopCluster(cl)
-
-metrics <- evaluate_model(caret_fit, modelname = unlist(models_to_run)) %T>% print
-
-# ============================================ Function plotting of ROCs =========================================
-
 ROC_plot(caret_fit)
 hist_plot(caret_fit)
 
 # Comparing Multiple Models
-# https://blog.revolutionanalytics.com/2016/05/using-caret-to-compare-models.html
-# Interpreation https://blog.revolutionanalytics.com/2014/09/comparing-models-in-r.html
-
+# Having set the same seed before running gbm.tune and xgb.tune
+# we have generated paired samples and are in a position to compare models 
+# using a resampling technique.
+# (See Hothorn at al, "The design and analysis of benchmark experiments
+# -Journal of Computational and Graphical Statistics (2005) vol 14 (3) 
+# pp 675-699) 
 
 rValues <- resamples(list(xgb=xgb.tune,gbm=gbm.tune))
 rValues <- resamples(caret_fit)
 rValues$values
 summary(rValues)
 
-bwplot(rValues,metric="ROC",main="ROC")	# boxplot
-dotplot(rValues,metric="Sens",main="Sens")	# dotplot
-dotplot(rValues,metric="Spec",main="Spec")	# dotplot
-splom(rValues,metric="ROC")
-
-
-
-
-
+bwplot(rValues,metric="ROC",main="GBM vs xgboost")	# boxplot
+dotplot(rValues,metric="ROC",main="GBM vs xgboost")	# dotplot
+#splom(rValues,metric="ROC")
 
