@@ -225,7 +225,7 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # Undersample non-defaults from the whole dataset. Holdout testing data right away
-shuffle(n=10000, ratio = 3/4)
+shuffle(n=800, ratio = 3/4)
 
 # Do undersampling of nondefaults
 # def_data <- train_data[which(train_data$default_time == "default"),]
@@ -251,8 +251,8 @@ models_to_run <- list("LogitBoost","glmboost","multinom","avNNet")
 
 
 # Set up cluster for parallel computing during CV
-cl <- makePSOCKcluster(detectCores())
-registerDoParallel(cl)
+#cl <- makePSOCKcluster(detectCores())
+#registerDoParallel(cl)
 
 #shuffle(6000)
 
@@ -262,7 +262,7 @@ caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_t
 
 # Stop Cluster
 
-stopCluster(cl)
+#stopCluster(cl)
 
 # Rename
 names(caret_fit) <-  unlist(models_to_run)
@@ -320,3 +320,28 @@ bwplot(difValues, layout = c(3, 1))
 # Logit boosts seems to perform significantly worse 
 trellis.par.set(caretTheme())
 dotplot(difValues)
+
+
+# ================================= Performances with Subsampling =========================
+
+modelnames <- unlist(models_to_run)
+all_inside_resamples <- list()
+all_inside_tests <- list()
+for(j in 1:length(modelnames)){
+  inside_models <- list()
+  for(i in 1:length(sub_methods)){
+    mod <- list[[sub_methods[i]]][[modelnames[j]]]
+    inside_models[[i]] <- mod
+  }
+  names(inside_models)   <- sub_methods
+  all_inside_resamples[[j]] <- resamples(inside_models)
+  all_inside_tests[[j]]      <- lapply(inside_models, function(x) test_roc(x))
+  all_inside_tests[[j]]      <- lapply( all_inside_tests[[j]], as.vector)
+  all_inside_tests[[j]]      <- do.call("rbind", all_inside_tests[[j]])
+  colnames(all_inside_tests[[j]]) <- c("lower", "ROC", "upper")
+  all_inside_tests[[j]] <- as.data.frame(all_inside_tests[[j]])
+}
+names(all_inside_resamples) <- modelnames
+names(all_inside_tests) <- modelnames
+lapply(all_inside_resamples, function(x) summary(x, metric = "ROC"))
+all_inside_tests
