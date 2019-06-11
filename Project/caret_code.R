@@ -232,13 +232,26 @@ ROC_plot <- function(caret_fit, modelname=models_to_run){
                                                            levels=rev(levels(test_data$default_time))))
   
   for (i in 1:length(models_to_run)){
+    #par(mfrow=c(1,1))
     plot(roc[[i]])
   }
   
+       
+  }
+
+hist_plot <- function(caret_fit, modelname=models_to_run){
+  models_to_run = unlist(modelname)
+  preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
+  for (i in 1:length(models_to_run)){
+    #par(mfrow=c(1,1))
+    histogram(~preds[[i]][["default"]]|test_data$default_time,xlab="Probability of Poor Segmentation")
+  }
+  
 }
+  
 
-
-
+ROC_plot(caret_fit)
+hist_plot(caret_fit)
 
 
 
