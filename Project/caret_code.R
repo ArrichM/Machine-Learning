@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel", "corrplot", "pROC")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -174,7 +174,33 @@ plot_evaluation <- function(evaluate_model_object){ # Insert valuation metrics
     theme_light()
 }
 
+# ROC plot for comparison
+ROC_plot <- function(caret_fit, modelname=models_to_run){
+  models_to_run = unlist(modelname)
+  preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
+  roc   <- lapply(1:length(models_to_run), function(x) roc(preds[[x]][["default"]],
+                                                           response= test_data$default_time,
+                                                           levels=rev(levels(test_data$default_time))))
+  
+  for (i in 1:length(models_to_run)){
+    #par(mfrow=c(1,1))
+    plot(roc[[i]])
+  }
+  
+  
+}
 
+# Hist plots
+hist_plot <- function(caret_fit, modelname=models_to_run){
+  models_to_run = unlist(modelname)
+  preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
+  for (i in 1:length(models_to_run)){
+    #par(mfrow=c(1,1))
+    dev.on()
+    histogram(~preds[[i]][["default"]]|test_data$default_time,xlab="Probability of Poor Segmentation")
+  }
+  
+}
 
 
 
@@ -222,54 +248,25 @@ stopCluster(cl)
 
 metrics <- evaluate_model(caret_fit, modelname = unlist(models_to_run)) %T>% print
 
-# Function plotting of ROCs
-
-ROC_plot <- function(caret_fit, modelname=models_to_run){
-  models_to_run = unlist(modelname)
-  preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
-  roc   <- lapply(1:length(models_to_run), function(x) roc(preds[[x]][["default"]],
-                                                           response= test_data$default_time,
-                                                           levels=rev(levels(test_data$default_time))))
-  
-  for (i in 1:length(models_to_run)){
-    #par(mfrow=c(1,1))
-    plot(roc[[i]])
-  }
-  
-       
-  }
-
-hist_plot <- function(caret_fit, modelname=models_to_run){
-  models_to_run = unlist(modelname)
-  preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
-  for (i in 1:length(models_to_run)){
-    #par(mfrow=c(1,1))
-    dev.on()
-    histogram(~preds[[i]][["default"]]|test_data$default_time,xlab="Probability of Poor Segmentation")
-  }
-  
-}
-  
+# ============================================ Function plotting of ROCs =========================================
 
 ROC_plot(caret_fit)
 hist_plot(caret_fit)
 
 # Comparing Multiple Models
-# Having set the same seed before running gbm.tune and xgb.tune
-# we have generated paired samples and are in a position to compare models 
-# using a resampling technique.
-# (See Hothorn at al, "The design and analysis of benchmark experiments
-# -Journal of Computational and Graphical Statistics (2005) vol 14 (3) 
-# pp 675-699) 
+# https://blog.revolutionanalytics.com/2016/05/using-caret-to-compare-models.html
+# Interpreation https://blog.revolutionanalytics.com/2014/09/comparing-models-in-r.html
+
 
 rValues <- resamples(list(xgb=xgb.tune,gbm=gbm.tune))
 rValues <- resamples(caret_fit)
 rValues$values
 summary(rValues)
 
-bwplot(rValues,metric="ROC",main="GBM vs xgboost")	# boxplot
-dotplot(rValues,metric="ROC",main="GBM vs xgboost")	# dotplot
-#splom(rValues,metric="ROC")
+bwplot(rValues,metric="ROC",main="ROC")	# boxplot
+dotplot(rValues,metric="Sens",main="Sens")	# dotplot
+dotplot(rValues,metric="Spec",main="Spec")	# dotplot
+splom(rValues,metric="ROC")
 
 
 
