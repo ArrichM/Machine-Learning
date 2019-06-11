@@ -272,8 +272,7 @@ hist_plot(caret_fit)
 # -Journal of Computational and Graphical Statistics (2005) vol 14 (3) 
 # pp 675-699) 
 
-rValues2 <- resamples(caret_fit)
-rValues2[["models"]] <- unlist(models_to_run)
+rValues <- resamples(caret_fit)
 rValues$values
 summary(rValues)
 
@@ -284,10 +283,10 @@ theme1$plot.symbol$pch = 16
 theme1$plot.line$col = rgb(1, 0, 0, .7)
 theme1$plot.line$lwd <- 2
 trellis.par.set(theme1)
-bwplot(rValues2, layout = c(3, 1))
+bwplot(rValues, layout = c(3, 1))
 
 #Plot
-bwplot(rValues2,metric="ROC",main="ROC")	# boxplot
-dotplot(rValues2,layout = c(3, 1))	# dotplot
+bwplot(rValues,metric="ROC",main="ROC")	# boxplot
+dotplot(rValues,layout = c(3, 1))	# dotplot
 splom(rValues,metric="ROC")
 
