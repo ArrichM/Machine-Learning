@@ -244,6 +244,7 @@ hist_plot <- function(caret_fit, modelname=models_to_run){
   preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
   for (i in 1:length(models_to_run)){
     #par(mfrow=c(1,1))
+    dev.on()
     histogram(~preds[[i]][["default"]]|test_data$default_time,xlab="Probability of Poor Segmentation")
   }
   
@@ -253,6 +254,22 @@ hist_plot <- function(caret_fit, modelname=models_to_run){
 ROC_plot(caret_fit)
 hist_plot(caret_fit)
 
+# Comparing Multiple Models
+# Having set the same seed before running gbm.tune and xgb.tune
+# we have generated paired samples and are in a position to compare models 
+# using a resampling technique.
+# (See Hothorn at al, "The design and analysis of benchmark experiments
+# -Journal of Computational and Graphical Statistics (2005) vol 14 (3) 
+# pp 675-699) 
+
+rValues <- resamples(list(xgb=xgb.tune,gbm=gbm.tune))
+rValues <- resamples(caret_fit)
+rValues$values
+summary(rValues)
+
+bwplot(rValues,metric="ROC",main="GBM vs xgboost")	# boxplot
+dotplot(rValues,metric="ROC",main="GBM vs xgboost")	# dotplot
+#splom(rValues,metric="ROC")
 
 
 
