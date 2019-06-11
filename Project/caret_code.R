@@ -205,10 +205,17 @@ hist_plot <- function(caret_fit, modelname=models_to_run){
   
 }
 
+# Densityplots
+densityplots_all <- function(caret_fit=caret_fit){
+  trellis.par.set(caretTheme())
+  for (i in 1:length(caret_fit)){
+    densityplot(caret_fit[[i]], pch = "|")}
+}
 
 
 
 
+densityplots_all()
 # ============================== Prepare Data ==============================
 
 ## Remove NA observations
@@ -257,12 +264,19 @@ caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_t
 
 stopCluster(cl)
 
+# Rename
+names(caret_fit) <-  unlist(models_to_run)
+
+# Check and compare metrics
 metrics <- evaluate_model(caret_fit, modelname = unlist(models_to_run)) %T>% print
 
 # ====================================== Plots ========================================
 
 ROC_plot(caret_fit)
 hist_plot(caret_fit)
+
+
+
 
 # Comparing Multiple Models
 # Having set the same seed before running gbm.tune and xgb.tune
@@ -272,9 +286,14 @@ hist_plot(caret_fit)
 # -Journal of Computational and Graphical Statistics (2005) vol 14 (3) 
 # pp 675-699) 
 
+
+# ================================== Performances ==============================
+
+
 rValues <- resamples(caret_fit)
 rValues$values
 summary(rValues)
+
 
 # Load theme
 theme1 <- trellis.par.get()
@@ -289,4 +308,15 @@ bwplot(rValues, layout = c(3, 1))
 bwplot(rValues,metric="ROC",main="ROC")	# boxplot
 dotplot(rValues,layout = c(3, 1))	# dotplot
 splom(rValues,metric="ROC")
+xyplot(rValues, what = "BlandAltman")
 
+# Quick check if there is difference between models
+difValues <- diff(rValues)
+summary(difValues)
+
+trellis.par.set(theme1)
+bwplot(difValues, layout = c(3, 1))
+
+# Logit boosts seems to perform significantly worse 
+trellis.par.set(caretTheme())
+dotplot(difValues)
