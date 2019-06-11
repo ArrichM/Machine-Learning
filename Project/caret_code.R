@@ -218,12 +218,12 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # Undersample non-defaults from the whole dataset. Holdout testing data right away
-shuffle(n=5000, ratio = 3/4)
+shuffle(n=10000, ratio = 3/4)
 
 # Do undersampling of nondefaults
-def_data <- train_data[which(train_data$default_time == "default"),]
-liv_data <- train_data[which(train_data$default_time == "non.default"),]
-train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
+# def_data <- train_data[which(train_data$default_time == "default"),]
+# liv_data <- train_data[which(train_data$default_time == "non.default"),]
+# train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
 
 
 
@@ -236,7 +236,7 @@ train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
 
 # Create fit constrol object which will control all models. We balance our dataset using the smote algortihm
 fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 5, classProbs = TRUE,
-                           summaryFunction=twoClassSummary, 
+                           summaryFunction=twoClassSummary, sampling = "down",
                            savePredictions = T)
 
 # We specify the desired models
@@ -272,12 +272,22 @@ hist_plot(caret_fit)
 # -Journal of Computational and Graphical Statistics (2005) vol 14 (3) 
 # pp 675-699) 
 
-rValues <- resamples(caret_fit)
+rValues2 <- resamples(caret_fit)
+rValues2[["models"]] <- unlist(models_to_run)
 rValues$values
 summary(rValues)
 
-bwplot(rValues,metric="ROC",main="ROC")	# boxplot
-dotplot(rValues,metric="Sens",main="Sens")	# dotplot
-dotplot(rValues,metric="Spec",main="Spec")	# dotplot
+# Load theme
+theme1 <- trellis.par.get()
+theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
+theme1$plot.symbol$pch = 16
+theme1$plot.line$col = rgb(1, 0, 0, .7)
+theme1$plot.line$lwd <- 2
+trellis.par.set(theme1)
+bwplot(rValues2, layout = c(3, 1))
+
+#Plot
+bwplot(rValues2,metric="ROC",main="ROC")	# boxplot
+dotplot(rValues2,layout = c(3, 1))	# dotplot
 splom(rValues,metric="ROC")
 
