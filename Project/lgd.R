@@ -193,7 +193,7 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # We select n obligors at random and append t lags to the dataset in order to account for time effects
-shuffle(n = 10000)
+shuffle(n = 3000)
 
 
 # Very dirty workaround for the column selectino problem
@@ -325,6 +325,7 @@ confusionMatrix(rf_fit)
 # ============================== LASSO Regression  ==============================
 
 
+shuffle(n = 300, lags = 3)
 
 # Run cross validation to find best lambda. Alpha = 1 gives lasso. ALpha = 0 gives ridge
 best_lambda <- cv.glmnet(x = train_data[ ,-19] %>% as.matrix, y = train_data[ ,19] , alpha = 1, family = "binomial")$lambda.min
@@ -338,7 +339,6 @@ log_lasso$beta
 
 # Get predictions for the testing set
 predicted_lasso <- predict(log_lasso, newx = test_data[ ,-19] %>% as.matrix, s = best_lambda, type = "response")
-
 
 
 
