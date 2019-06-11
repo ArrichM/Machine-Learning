@@ -33,8 +33,10 @@ wd <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(wd)
 set.seed(100)
 ## Read Data from CSV
-dat <- read.csv(paste0(wd, "/Data/mortgage.csv"))
 
+# zipF<- paste0(wd, "/Data/mortgage_csv.rar")
+# unzip(zipF,exdir=outDir)
+# dat <- read.csv(paste0(wd, "/Data/mortgage.csv"))
 
 
 
@@ -215,11 +217,11 @@ shuffle(n = 10000)
 
 
 # Fit neural network with 7 neurons in one layer
-nn <- neuralnet(default_time ~ ., data = train_data, hidden = 11, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
-                err.fct = "sse", lifesign = "full", threshold = 0.05, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
+# nn <- neuralnet(default_time ~ ., data = train_data, hidden = 11, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
+#                 err.fct = "sse", lifesign = "full", threshold = 0.05, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
 
 # Get predictions for the testing set
-evaluate_model(list(nn), modelname = c("Neural Network"))
+# evaluate_model(list(nn), modelname = c("Neural Network"))
 
 
 
@@ -249,10 +251,13 @@ evaluate_model(list(log_reg), modelname = c( "Logistic Regression"))
 
 
 # initialize cross validation Folds. Here we use 5-fold cross validation, repeated 3 times
-fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 3,  sampling = "smote", classProbs = TRUE)
+#fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 3,  sampling = "smote", classProbs = TRUE)
+fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 5, sampling = "smote", classProbs = TRUE,
+                           summaryFunction=twoClassSummary, 
+                           savePredictions = T)
 
 # Fit boosted logistic/probit regression
-logitboost_fit <- caret::train(make.names(default_time) ~ ., data=train_data, method="LogitBoost", trControl = fitControl)
+logitboost_fit <- caret::train(make.names(default_time) ~ ., data=train_data, method="LogitBoost", trControl = fitControl, metric="ROC")
 
 # Check probabilities
 predict(logitboost_fit, newdata=test_data, type="prob")
@@ -300,7 +305,7 @@ evaluate_model(list(log_reg, nn, logitboost_fit, random_forest), modelname = c("
 
 # == Alternative Way to get Random Forrest via cross validation ==
 
-rf_fit <- caret::train(make.names(default_time) ~ ., data=train_data, method="ranger", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
+rf_fit <- caret::train(make.names(default_time) ~ ., data=train_data, method="ranger", trControl = fitControl, metric ="ROC") # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
 
 # Looking at how accuracy increases over the training procedure
 trellis.par.set(caretTheme())
@@ -378,7 +383,7 @@ plot_evaluation(metrics)
 
 multinomial     <- caret::train(make.names(default_time) ~ ., data=train_data, method="multinom", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
 predict(mxnet, test_data, type="prob")
-evaluate_model(list(multinnomial), modelname = c("multinomial"))
+evaluate_model(list(multinomial), modelname = c("multinomial"))
 
 
 
