@@ -324,6 +324,15 @@ dotplot(difValues)
 
 # ================================= Performances with Subsampling =========================
 
+subsamples <- function(char){
+  fitControl$sampling <- char
+  caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
+                                                              data=train_data, method= x, trControl = fitControl, metric = "ROC") )
+  
+}
+sub_methods <- c("up", "down", "rose", "smote")
+list <- lapply(sub_methods, function(x) subsamples(x))
+
 modelnames <- unlist(models_to_run)
 all_inside_resamples <- list()
 all_inside_tests <- list()
