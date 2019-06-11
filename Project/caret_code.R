@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel")
+toload <- c("magrittr","plyr","reshape2","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -28,9 +28,11 @@ sapply(toload, require, character.only = TRUE)
 
 # ============================== Read Data  ==============================
 
+rm(list=ls())
+
 ## Working Directory Setting
-wd <- dirname(rstudioapi::getSourceEditorContext()$path)
-setwd(wd)
+dirname(rstudioapi::getSourceEditorContext()$path) %>% setwd
+
 set.seed(100)
 ## Read Data from CSV
 dat <- read.csv(paste0(wd, "/Data/mortgage.csv"))
@@ -195,8 +197,15 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # We select n obligors at random and append t lags to the dataset in order to account for time effects
-shuffle(n = 3000)
+shuffle(n = 500, lags = 3)
 
+shuffle(nrow(dat), ratio = 3/4)
+
+
+def_data <- train_data[which(train_data$default_time == 1),]
+liv_data <- train_data[which(train_data$default_time == 0),]
+
+train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
 
 
 
@@ -207,25 +216,26 @@ shuffle(n = 3000)
 
 
 # Create fit constrol object which will control all models. We balance our dataset using the smote algortihm
-fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 5, sampling = "smote", classProbs = TRUE,
+fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 5, classProbs = TRUE,
                            summaryFunction=twoClassSummary, 
                            savePredictions = T)
 
 # We specify the desired models
-models_to_run <- list("LogitBoost","glmboost","multinom","avNNet","gamboost")
+models_to_run <- list("LogitBoost","glmboost","multinom","avNNet")
 
-
-shuffle(10000)
 
 # Set up cluster for parallel computing during CV
 cl <- makePSOCKcluster(detectCores())
 registerDoParallel(cl)
+
+#shuffle(6000)
 
 # Carry out model fitting using CV
 caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
                                                             data=train_data, method= x, trControl = fitControl, metric = "ROC") )
 
 # Stop Cluster
+
 stopCluster(cl)
 
 metrics <- evaluate_model(caret_fit, modelname = unlist(models_to_run)) %T>% print
