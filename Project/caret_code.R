@@ -176,6 +176,16 @@ plot_evaluation <- function(evaluate_model_object){ # Insert valuation metrics
     theme_light()
 }
 
+# Evaluating ROC
+test_roc <- function(model) {
+  preds <- predict(model, test_data, type="prob")
+  roc_obj <- roc(preds[["default"]],
+                 response= test_data$default_time,
+                 levels=rev(levels(test_data$default_time)))
+  
+  ci(roc_obj)
+}
+
 # Function plotting of ROCs
 
 ROC_plot <- function(caret_fit, modelname=models_to_run){
@@ -215,7 +225,6 @@ densityplots_all <- function(caret_fit=caret_fit){
 
 
 
-densityplots_all()
 # ============================== Prepare Data ==============================
 
 ## Remove NA observations
@@ -225,7 +234,7 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # Undersample non-defaults from the whole dataset. Holdout testing data right away
-shuffle(n=800, ratio = 3/4)
+shuffle(n=5000, ratio = 3/4)
 
 # Do undersampling of nondefaults
 # def_data <- train_data[which(train_data$default_time == "default"),]
@@ -242,7 +251,7 @@ shuffle(n=800, ratio = 3/4)
 
 
 # Create fit constrol object which will control all models. We balance our dataset using the smote algortihm
-fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 5, classProbs = TRUE,
+fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 3, classProbs = TRUE,
                            summaryFunction=twoClassSummary, sampling = "down",
                            savePredictions = T)
 
@@ -329,9 +338,10 @@ dotplot(difValues)
 
 subsamples <- function(char){
   fitControl$sampling <- char
-  caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
+  fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
                                                               data=train_data, method= x, trControl = fitControl, metric = "ROC") )
-  
+  names(fit) <- modelnames
+  return(fit)
 }
 
 # Set up cluster for parallel computing during CV
@@ -341,9 +351,14 @@ cl <- makePSOCKcluster(detectCores())
 registerDoParallel(cl)
 
 # Fit model for every type of resampling
-list <- lapply(sub_methods, function(x) subsamples(x))
+subsampled_fits <- lapply(sub_methods, function(x) subsamples(x))
 
 stopCluster(cl)
+
+
+names(subsampled_fits) <- sub_methods
+
+
 
 
 # Extract for each subsampling method the corresponding method
@@ -352,7 +367,7 @@ all_tests <- list()
 for(j in 1:length(modelnames)){
   models <- list()
   for(i in 1:length(sub_methods)){
-    mod <- list[[sub_methods[i]]][[modelnames[j]]]
+    mod <- subsampled_fits[[sub_methods[i]]][[modelnames[j]]]
     models[[i]] <- mod
   }
   names(models)   <- sub_methods
@@ -374,7 +389,7 @@ summary <- lapply(all_resamples, function(x) summary(x, metric = "ROC"))
 # Plot them
 bwplot(all_resamples$LogitBoost, layout=c(3,1))
 bwplot(all_resamples$glmboost, layout=c(3,1))
-bwplot(all_resamples$multinom, layout=c(3,1))
-bwplot(all_resamples$avNNet, layout=c(3,1))
+# bwplot(all_resamples$multinom, layout=c(3,1))
+# bwplot(all_resamples$avNNet, layout=c(3,1))
 
 all_tests
