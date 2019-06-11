@@ -222,6 +222,20 @@ stopCluster(cl)
 
 metrics <- evaluate_model(caret_fit, modelname = unlist(models_to_run)) %T>% print
 
+# Function plotting of ROCs
+
+ROC_plot <- function(caret_fit, modelname=models_to_run){
+  models_to_run = unlist(modelname)
+  preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
+  roc   <- lapply(1:length(models_to_run), function(x) roc(preds[[x]][["default"]],
+                                                           response= test_data$default_time,
+                                                           levels=rev(levels(test_data$default_time))))
+  
+  for (i in 1:length(models_to_run)){
+    plot(roc[[i]])
+  }
+  
+}
 
 
 
