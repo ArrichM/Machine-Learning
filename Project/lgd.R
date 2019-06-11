@@ -36,7 +36,7 @@ set.seed(100)
 
 # zipF<- paste0(wd, "/Data/mortgage_csv.rar")
 # unzip(zipF,exdir=outDir)
-# dat <- read.csv(paste0(wd, "/Data/mortgage.csv"))
+dat <- read.csv(paste0(wd, "/Data/mortgage.csv"))
 
 
 
@@ -96,8 +96,17 @@ shuffle <- function(n = nrow(dat), data = dat, ratio = 2/3, lags = NULL, unwante
   
   temp_data <-  as.data.frame(scale(temp_data, center = min, scale = max - min))
   
+  
+  # Change levels of default data from 0 and 1 to non-default and default. Needed for input in care functions
+  temp_data$default_time <-  as.factor(ifelse(temp_data$default_time==0, 
+                                              "non-default", 
+                                              "default" ))#, unique = T)
+  
+  levels(temp_data$default_time) <- make.names(levels(factor(temp_data$default_time)))
+  
   # Select ratio of the data as trainign data
   index <- sample(1:nrow(temp_data), (nrow(temp_data)*ratio) %>% ceiling)
+  
   
   # Assign training data in global environment
   train_data <<- temp_data[index,]
@@ -106,7 +115,9 @@ shuffle <- function(n = nrow(dat), data = dat, ratio = 2/3, lags = NULL, unwante
   test_data <<- temp_data[-index, ]
   
   
+  
 }
+
 
 # Function to create prediction evaluation matrix
 prediction_matrix <- function(predictions, observations = test_data$default_time, tr = 0.5){
@@ -140,11 +151,11 @@ evaluate_model <- function(model=list(...), modelname, observations = test_data$
       predictions <- predict(model, newx = test_data[ ,-17] %>% as.matrix, s = best_lamb, type = "response")
       
     }else{
-      predictions <- as.integer(predict(model[[i]], newdata=test_data))-1#, type = "response")
+      predictions <- predict(model[[i]], newdata=test_data)#, type = "response")
     }
-    predictions_bin <- ifelse(predictions < tr, 0,1)
+    #predictions_bin <- ifelse(predictions < tr, 0,1)
     
-    table  <- prediction_matrix(predictions)
+    table  <- confusionMatrix(predictions, test_data$default_time)$table
     # table  <- table(observations, predictions_bin, dnn = c("Actual defaults", "Predicted defaults"))[c(2,1),c(2,1)] # Create matrix and Change order columns of matrix
     
     TRP    <- table[1,1]/(table[1,1]+table[1,2])   # True Positive Rate (TPR) or sensitivity or recall or hit rate is a measure of how
@@ -158,9 +169,9 @@ evaluate_model <- function(model=list(...), modelname, observations = test_data$
     # the predicted ones are actually correctly predicted. If precision is closer to one, we are more accurate in our predictions
     Recall <- table[1,1]/(table[1,1]+table[1,2])   # Recall, on the other hand, tells how many relevant items we selected.
     
-    mse_cont    <- (predictions-observations) ^2 %>% mean
-    mse_bin     <- (predictions-observations) ^2 %>% mean
-    metrics[[i]]<- data.frame(Model = modelname[i], TRP = TRP, TNR=TNR, ACC=ACC, Precision=Prec, Recall=Recall, MSE_cont = mse_cont, MSE_bin=mse_bin)
+    #mse_cont    <- (predictions-observations) ^2 %>% mean
+    #mse_bin     <- (predictions-observations) ^2 %>% mean
+    metrics[[i]]<- data.frame(Model = modelname[i], TRP = TRP, TNR=TNR, ACC=ACC, Precision=Prec, Recall=Recall) #MSE_cont = mse_cont, MSE_bin=mse_bin)
     tables[[i]] <- table
   }
   
@@ -170,6 +181,9 @@ evaluate_model <- function(model=list(...), modelname, observations = test_data$
   list(tables, metrics_all)
   #return(list(matrix = mat, detected_defaults = detected_defaults, mse_cont = mse_cont, mse_bin = mse_bin))
 }
+
+
+
 
 # Feed with input from evaluate_model
 plot_evaluation <- function(evaluate_model_object){ # Insert valuation metrics
