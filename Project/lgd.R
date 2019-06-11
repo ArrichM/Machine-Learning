@@ -203,11 +203,6 @@ shuffle(n = 3000)
 # write.table(train_data, file = "temp.csv")
 # train_data <- read.table("temp.csv")
 
-attach(train_data)
-
-
-train_data <- smotefamily::SMOTE(train_data, default_time)$data[,-21]
-
 
 
 
@@ -353,6 +348,7 @@ predicted_lasso <- predict(log_lasso, newx = test_data[ ,-19] %>% as.matrix, s =
 
 
 
+
 # ============================== glmboost  ==============================
 
 
@@ -370,6 +366,14 @@ metrics
 plot_evaluation(metrics)
 
 
+
+
+
+
+
+
+
+
 # ============================== Multinomial  ==============================
 
 multinomial     <- caret::train(make.names(default_time) ~ ., data=train_data, method="multinom", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
@@ -377,15 +381,34 @@ predict(mxnet, test_data, type="prob")
 evaluate_model(list(multinnomial), modelname = c("multinomial"))
 
 
+
+
+
+
+
+
+
+
+
 # ============================== avNNet  ==============================
 
-avNNet     <- caret::train(make.names(default_time) ~ ., data=train_data, method="avNNet", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
+avNNet     <- caret::train(make.names(default_time) ~ ., data=train_data, method="avNNet", trControl = fitControl) 
 evaluate_model(list(avNNet), modelname = c("ageraged NN"))
 
 # plot
 metrics <- evaluate_model(list(logitboost_fit, rf_fit, glm_fit, multinomial, avNNet), modelname = c("LogitBoost",  "trained RF", "GLM Boost", "multinomial", "averaged NN"))
 metrics
 plot_evaluation(metrics)
+
+
+
+
+
+
+
+
+
+
 
 # ============================== Comparison  ==============================
 
