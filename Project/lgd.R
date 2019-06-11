@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","smotefamily")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -33,7 +33,7 @@ wd <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(wd)
 set.seed(100)
 ## Read Data from CSV
-dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
+dat <- read.csv(paste0(wd, "/Data/mortgage.csv"))
 
 
 
@@ -42,92 +42,92 @@ dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
 
 # Function to extarct and append lags to the dataframe
 get_lags <- function(c_id = 1, data = dat, lag = 2, lookup = c(6,7,8,9,10,11)){
-
+  
   #get observations for obligor c_id
   data <- data[which(data$id == c_id),]
-
+  
   #check wheather enough observations are available
   if(length(data$time) < lag+1) return( matrix(NA, ncol = ncol(data) + length(lookup) * lag) )
-
+  
   #function to extract lags and append to row
   bind_lags <- function(t){
     cbind(data[which(data$time == data$time[t]),],
           apply(data[which(data$time %in%  data$time[(t-1):(t-lag)] ), lookup],2, function(x) as.character(x) %>% as.numeric) %>% matrix(ncol = length(lookup)*lag) )
   }
-
+  
   #extract lags and append to row for each observed time
   out <- sapply(1:length(data$time) %>% tail(n = -3) ,bind_lags) %>% t
-
+  
   print(c(c_id, ncol(out)))
   return(out)
-
+  
 }
 
 # Shuffle data and create training and testing set on the go. Also we do a number of manipulations to improve performance
 shuffle <- function(n = nrow(dat), data = dat, ratio = 2/3, lags = NULL, unwanted = c(1:2,22,23), col_to_lag = c(6,7,8,9,10,11)){
-
+  
   # Sample n data at random
   if(is.null(lags) == T) temp_data <- data[sample(1:nrow(data),n),]
-
+  
   # Add lags if desired
   if(is.null(lags) == F){
-
+    
     #append lags
     temp_data <- lapply(sample(unique(data$id),n), get_lags, lag = lags, lookup = col_to_lag, data = data) %>% do.call(what = rbind) %>% as.matrix
-
+    
     #transform to numeric
     temp_data <- apply(temp_data, 2 , function(x) as.character(x) %>% as.numeric)
-
+    
     #remove NA
     temp_data <- temp_data[complete.cases(temp_data),] %>% set_colnames( c(colnames(dat),
-      paste0(rep(colnames(dat)[col_to_lag], each = lags),"-L",rep(1:lags,length(col_to_lag))) ) )
-
-
+                                                                           paste0(rep(colnames(dat)[col_to_lag], each = lags),"-L",rep(1:lags,length(col_to_lag))) ) )
+    
+    
   }
-
+  
   # Remove unwanted columns
   temp_data <- temp_data[,-unwanted]
-
+  
   # Scale data for neural network, we do not scale id and time
   min <- apply(temp_data, 2 , min)
   max <- apply(temp_data, 2 , max)
-
+  
   temp_data <-  as.data.frame(scale(temp_data, center = min, scale = max - min))
-
+  
   # Select ratio of the data as trainign data
   index <- sample(1:nrow(temp_data), (nrow(temp_data)*ratio) %>% ceiling)
-
+  
   # Assign training data in global environment
   train_data <<- temp_data[index,]
-
+  
   # Assign testing data in global environment
   test_data <<- temp_data[-index, ]
-
-
+  
+  
 }
 
 # Function to create prediction evaluation matrix
 prediction_matrix <- function(predictions, observations = test_data$default_time, tr = 0.5){
-
+  
   #transform to binary response
   predictions <- ifelse(predictions < tr, 0,1)
   observations <- ifelse(observations < tr, 0,1)
-
+  
   #get accordances
   nn <- which(predictions == 0) %in% which(observations == 0) %>% sum
   oo <- which(predictions == 1) %in% which(observations == 1) %>% sum
   no <- which(predictions == 0) %in% which(observations == 1) %>% sum
   on <- which(predictions == 1) %in% which(observations == 0) %>% sum
-
+  
   matrix(c(oo,on,no,nn), nrow = 2, byrow = T) %>% set_rownames(1:2) %>% set_colnames(1:2)
-
+  
 }
 
 # Function to evaluate performance of models. Always enter models in form of lists
 evaluate_model <- function(model=list(...), modelname, observations = test_data$default_time, best_lamb = best_lambda, tr = 0.5){ #modelname added
-
-
-
+  
+  
+  
   n = length(model)
   tables    = list()
   metrics   = list()
@@ -136,15 +136,15 @@ evaluate_model <- function(model=list(...), modelname, observations = test_data$
     #get predictions from the model
     if(grepl("lasso", deparse(substitute(model))) ){
       predictions <- predict(model, newx = test_data[ ,-17] %>% as.matrix, s = best_lamb, type = "response")
-
+      
     }else{
       predictions <- as.integer(predict(model[[i]], newdata=test_data))-1#, type = "response")
     }
     predictions_bin <- ifelse(predictions < tr, 0,1)
-
+    
     table  <- prediction_matrix(predictions)
     # table  <- table(observations, predictions_bin, dnn = c("Actual defaults", "Predicted defaults"))[c(2,1),c(2,1)] # Create matrix and Change order columns of matrix
-
+    
     TRP    <- table[1,1]/(table[1,1]+table[1,2])   # True Positive Rate (TPR) or sensitivity or recall or hit rate is a measure of how
     # many true positives were identified out of all the positives identified: Ideally, the model is better if we have this closer to one
     TNR    <- table[2,2]/(table[2,2]+table[2,1])   # True Negative Rate (TNR) or specificity is the ratio of true negatives and total
@@ -155,23 +155,23 @@ evaluate_model <- function(model=list(...), modelname, observations = test_data$
     Prec   <- table[1,1]/(table[1,1]+table[2,1])   # Precision is defined as how many selected items are relevant. That is, how many of
     # the predicted ones are actually correctly predicted. If precision is closer to one, we are more accurate in our predictions
     Recall <- table[1,1]/(table[1,1]+table[1,2])   # Recall, on the other hand, tells how many relevant items we selected.
-
+    
     mse_cont    <- (predictions-observations) ^2 %>% mean
     mse_bin     <- (predictions-observations) ^2 %>% mean
     metrics[[i]]<- data.frame(Model = modelname[i], TRP = TRP, TNR=TNR, ACC=ACC, Precision=Prec, Recall=Recall, MSE_cont = mse_cont, MSE_bin=mse_bin)
     tables[[i]] <- table
   }
-
+  
   names(tables) <- modelname
   metrics_all   <- do.call(rbind, metrics)
-
+  
   list(tables, metrics_all)
   #return(list(matrix = mat, detected_defaults = detected_defaults, mse_cont = mse_cont, mse_bin = mse_bin))
 }
 
 # Feed with input from evaluate_model
 plot_evaluation <- function(evaluate_model_object){ # Insert valuation metrics
-
+  
   metrics_all <- tail(evaluate_model_object,1)
   df <- gather(metrics_all[[1]][, 1:5], key="metric", value="value", -Model) # Bringing in correct shape to feed into ggplot
   ggplot(data=df, aes(x=Model, y=value, color=Model, fill=Model))+ #https://www.r-graph-gallery.com/48-grouped-barplot-with-ggplot2/
@@ -193,7 +193,7 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # We select n obligors at random and append t lags to the dataset in order to account for time effects
-shuffle(n = 3000)
+shuffle(n = 10000)
 
 
 # Very dirty workaround for the column selectino problem
@@ -216,7 +216,7 @@ shuffle(n = 3000)
 
 # Fit neural network with 7 neurons in one layer
 nn <- neuralnet(default_time ~ ., data = train_data, hidden = 11, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
-                      err.fct = "sse", lifesign = "full", threshold = 0.05, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
+                err.fct = "sse", lifesign = "full", threshold = 0.05, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
 
 # Get predictions for the testing set
 evaluate_model(list(nn), modelname = c("Neural Network"))
@@ -300,7 +300,7 @@ evaluate_model(list(log_reg, nn, logitboost_fit, random_forest), modelname = c("
 
 # == Alternative Way to get Random Forrest via cross validation ==
 
-rf_fit     <- caret::train(make.names(default_time) ~ ., data=train_data, method="ranger", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
+rf_fit <- caret::train(make.names(default_time) ~ ., data=train_data, method="ranger", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
 
 # Looking at how accuracy increases over the training procedure
 trellis.par.set(caretTheme())
@@ -394,6 +394,7 @@ evaluate_model(list(multinnomial), modelname = c("multinomial"))
 
 avNNet     <- caret::train(make.names(default_time) ~ ., data=train_data, method="avNNet", trControl = fitControl) 
 evaluate_model(list(avNNet), modelname = c("ageraged NN"))
+
 
 # plot
 metrics <- evaluate_model(list(logitboost_fit, rf_fit, glm_fit, multinomial, avNNet), modelname = c("LogitBoost",  "trained RF", "GLM Boost", "multinomial", "averaged NN"))
