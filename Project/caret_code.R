@@ -188,15 +188,12 @@ dat <- dat[complete.cases(dat),]
 # Add age of position
 dat$age <- dat$time- dat$orig_time
 
-# We select n obligors at random and append t lags to the dataset in order to account for time effects
-shuffle(n = 500, lags = 3)
-
+# Undersample non-defaults from the whole dataset. Holdout testing data right away
 shuffle(nrow(dat), ratio = 3/4)
 
-
+# Do undersampling of nondefaults
 def_data <- train_data[which(train_data$default_time == 1),]
 liv_data <- train_data[which(train_data$default_time == 0),]
-
 train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
 
 
