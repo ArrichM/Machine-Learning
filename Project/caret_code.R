@@ -207,13 +207,15 @@ shuffle(n = 3000)
 
 
 # Create fit constrol object which will control all models. We balance our dataset using the smote algortihm
-fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 3,  sampling = "smote", classProbs = TRUE)
+fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 5, sampling = "smote", classProbs = TRUE,
+                           summaryFunction=twoClassSummary, 
+                           savePredictions = T)
 
 # We specify the desired models
 models_to_run <- list("LogitBoost","glmboost","multinom","avNNet","gamboost")
 
 caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
-                                                            data=train_data, method= x, trControl = fitControl) )
+                                                            data=train_data, method= x, trControl = fitControl, metric = "ROC") )
 
 evaluate_model(caret_fit, modelname = unlist(models_to_run))
 
