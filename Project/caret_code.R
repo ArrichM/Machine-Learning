@@ -35,7 +35,7 @@ dirname(rstudioapi::getSourceEditorContext()$path) %>% setwd
 
 set.seed(100)
 ## Read Data from CSV
-dat <- read.csv(paste0(wd, "/Data/mortgage.csv"))
+dat <- read.csv( "Data/mortgage.csv")
 
 
 
