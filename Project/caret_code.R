@@ -251,10 +251,10 @@ models_to_run <- list("LogitBoost","glmboost","multinom","avNNet")
 
 
 # Set up cluster for parallel computing during CV
-#cl <- makePSOCKcluster(detectCores())
-#registerDoParallel(cl)
+cl <- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
 
-#shuffle(6000)
+# shuffle(6000)
 
 # Carry out model fitting using CV
 caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
@@ -262,13 +262,14 @@ caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_t
 
 # Stop Cluster
 
-#stopCluster(cl)
+stopCluster(cl)
 
 # Rename
-names(caret_fit) <-  unlist(models_to_run)
+modelnames <- unlist(models_to_run)
+names(caret_fit) <-  modelnames
 
 # Check and compare metrics
-metrics <- evaluate_model(caret_fit, modelname = unlist(models_to_run)) %T>% print
+metrics <- evaluate_model(caret_fit, modelname = modelnames) %T>% print
 
 # ====================================== Plots ========================================
 
@@ -324,33 +325,56 @@ dotplot(difValues)
 
 # ================================= Performances with Subsampling =========================
 
+#Function to Fit caret_fit for every type of resampling (upsampling, downsampling, SMOTE, ROSE)
+
 subsamples <- function(char){
   fitControl$sampling <- char
   caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
                                                               data=train_data, method= x, trControl = fitControl, metric = "ROC") )
   
 }
-sub_methods <- c("up", "down", "rose", "smote")
+
+# Set up cluster for parallel computing during CV
+sub_methods <- c("up", "down", "rose", "smote") # Names of the down/upsampling methods
+
+cl <- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Fit model for every type of resampling
 list <- lapply(sub_methods, function(x) subsamples(x))
 
-modelnames <- unlist(models_to_run)
-all_inside_resamples <- list()
-all_inside_tests <- list()
+stopCluster(cl)
+
+
+# Extract for each subsampling method the corresponding method
+all_resamples <- list()
+all_tests <- list()
 for(j in 1:length(modelnames)){
-  inside_models <- list()
+  models <- list()
   for(i in 1:length(sub_methods)){
     mod <- list[[sub_methods[i]]][[modelnames[j]]]
-    inside_models[[i]] <- mod
+    models[[i]] <- mod
   }
-  names(inside_models)   <- sub_methods
-  all_inside_resamples[[j]] <- resamples(inside_models)
-  all_inside_tests[[j]]      <- lapply(inside_models, function(x) test_roc(x))
-  all_inside_tests[[j]]      <- lapply( all_inside_tests[[j]], as.vector)
-  all_inside_tests[[j]]      <- do.call("rbind", all_inside_tests[[j]])
-  colnames(all_inside_tests[[j]]) <- c("lower", "ROC", "upper")
-  all_inside_tests[[j]] <- as.data.frame(all_inside_tests[[j]])
+  names(models)   <- sub_methods
+  all_resamples[[j]] <- resamples(models)
+  all_tests[[j]]      <- lapply(models, function(x) test_roc(x))
+  all_tests[[j]]      <- lapply( all_tests[[j]], as.vector)
+  all_tests[[j]]      <- do.call("rbind", all_tests[[j]])
+  colnames(all_tests[[j]]) <- c("lower", "ROC", "upper")
+  all_tests[[j]] <- as.data.frame(all_tests[[j]])
 }
-names(all_inside_resamples) <- modelnames
-names(all_inside_tests) <- modelnames
-lapply(all_inside_resamples, function(x) summary(x, metric = "ROC"))
-all_inside_tests
+
+# Reassign themodelnames
+names(all_resamples) <- modelnames
+names(all_tests) <- modelnames
+
+# Get summary for all resamples
+summary <- lapply(all_resamples, function(x) summary(x, metric = "ROC"))
+
+# Plot them
+bwplot(all_resamples$LogitBoost, layout=c(3,1))
+bwplot(all_resamples$glmboost, layout=c(3,1))
+bwplot(all_resamples$multinom, layout=c(3,1))
+bwplot(all_resamples$avNNet, layout=c(3,1))
+
+all_tests
