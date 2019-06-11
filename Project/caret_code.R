@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -214,10 +214,21 @@ fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 5, samplin
 # We specify the desired models
 models_to_run <- list("LogitBoost","glmboost","multinom","avNNet","gamboost")
 
+
+shuffle(10000)
+
+# Set up cluster for parallel computing during CV
+cl <- makePSOCKcluster(detectCores())
+registerDoParallel(cl)
+
+# Carry out model fitting using CV
 caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
                                                             data=train_data, method= x, trControl = fitControl, metric = "ROC") )
 
-evaluate_model(caret_fit, modelname = unlist(models_to_run))
+# Stop Cluster
+stopCluster(cl)
+
+metrics <- evaluate_model(caret_fit, modelname = unlist(models_to_run)) %T>% print
 
 
 
