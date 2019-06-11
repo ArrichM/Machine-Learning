@@ -193,36 +193,43 @@ ROC_plot <- function(caret_fit, modelname=models_to_run){
   preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
   roc   <- lapply(1:length(models_to_run), function(x) roc(preds[[x]][["default"]],
                                                            response= test_data$default_time,
-                                                           levels=rev(levels(test_data$default_time))))
+                                                          levels=rev(levels(test_data$default_time))))
   
-  for (i in 1:length(models_to_run)){
-    #par(mfrow=c(1,1))
-    plot(roc[[i]])
+  plot.roc(roc[[1]], auc.polygon=TRUE,
+           grid=c(0.1, 0.2), grid.col=c("grey", "red"),
+           print.thres=TRUE,
+           reuse.auc=FALSE, main="ROC curves")#, #add = TRUE)
+  legend("bottomright", legend=modelnames,
+         col=c(par("fg"), "blue"), lwd=2)
+  for (i in 2:length(modelnames)){
+    plot.roc(roc[[i]], add=T)
+    
   }
   
   
 }
 
 # Plotting function for histograms
-hist_plot <- function(caret_fit, modelname=models_to_run){
+hist_plot <- function(caret_fit.=caret_fit, modelname=models_to_run){
   models_to_run = unlist(modelname)
   preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
+  list <- list()
   for (i in 1:length(models_to_run)){
     #par(mfrow=c(1,1))
-    dev.on()
-    histogram(~preds[[i]][["default"]]|test_data$default_time,xlab="Probability of Poor Segmentation")
+    list[[i]] <- histogram(~preds[[i]][["default"]]|test_data$default_time,xlab="Probability of Poor Segmentation", main=modelnames[i])
   }
-  
+  return(list)
 }
 
 # Densityplots
-densityplots_all <- function(caret_fit=caret_fit){
-  trellis.par.set(caretTheme())
+densityplots_all <- function(caret_fit.=caret_fit){
+  list=list()
   for (i in 1:length(caret_fit)){
-    densityplot(caret_fit[[i]], pch = "|")}
+    list[[i]] <- densityplot(caret_fit[[i]], pch = "|", main=modelnames[i])
+  }
+  trellis.par.set(caretTheme())
+  return(list)
 }
-
-
 
 
 # ============================== Prepare Data ==============================
@@ -240,8 +247,6 @@ shuffle(n=5000, ratio = 3/4)
 # def_data <- train_data[which(train_data$default_time == "default"),]
 # liv_data <- train_data[which(train_data$default_time == "non.default"),]
 # train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
-
-
 
 
 
@@ -281,10 +286,15 @@ names(caret_fit) <-  modelnames
 metrics <- evaluate_model(caret_fit, modelname = modelnames) %T>% print
 
 # ====================================== Plots ========================================
-
+trellis.par.set(caretTheme())
+# Plot rocs
 ROC_plot(caret_fit)
-hist_plot(caret_fit)
 
+# Plot densities
+densityplots_all()
+
+#Plot historgrams
+hist_plot()
 
 
 
@@ -387,9 +397,25 @@ names(all_tests) <- modelnames
 summary <- lapply(all_resamples, function(x) summary(x, metric = "ROC"))
 
 # Plot them
-bwplot(all_resamples$LogitBoost, layout=c(3,1))
-bwplot(all_resamples$glmboost, layout=c(3,1))
-# bwplot(all_resamples$multinom, layout=c(3,1))
-# bwplot(all_resamples$avNNet, layout=c(3,1))
+bwplot_subsample_list <- list()
+for (i in 1:length(modelnames)){
+  trellis.par.set(theme1)
+  bwplot_subsample_list[[i]] <-bwplot(all_resamples[[modelnames[i]]], main=modelnames[i], layout=c(3,1))
+  
+}
+
+bwplot_subsample_list
+
+# Now we are testing wether there is a significant difference in prediction power between the models
+dif_subsample_plot <- list()
+for (i in 1:length(modelnames)){
+  difsubsampling_method <- diff(all_resamples[[i]])
+  trellis.par.set(theme1)
+  dif_subsample_plot[[i]] <-dotplot(difsubsampling_method, main=modelnames[i])
+  
+}
+dif_subsample_plot
+
+# No real difference from zero
 
 all_tests
