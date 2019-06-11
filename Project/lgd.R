@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","smotefamily")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -33,7 +33,7 @@ wd <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(wd)
 set.seed(100)
 ## Read Data from CSV
-#dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
+dat <- read.csv(paste0(wd, "/Data/mortgage.csv")) %T>% attach
 
 
 
@@ -193,15 +193,23 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # We select n obligors at random and append t lags to the dataset in order to account for time effects
-shuffle(n = 1000, lags = 3)
+shuffle(n = 3000)
 
 
 # Very dirty workaround for the column selectino problem
-write.table(test_data, file = "temp.csv")
-test_data <- read.table("temp.csv")
+# write.table(test_data, file = "temp.csv")
+# test_data <- read.table("temp.csv")
+# 
+# write.table(train_data, file = "temp.csv")
+# train_data <- read.table("temp.csv")
 
-write.table(train_data, file = "temp.csv")
-train_data <- read.table("temp.csv")
+attach(train_data)
+
+
+train_data <- smotefamily::SMOTE(train_data, default_time)$data[,-21]
+
+
+
 
 
 
@@ -212,14 +220,11 @@ train_data <- read.table("temp.csv")
 
 
 # Fit neural network with 7 neurons in one layer
-nn <- neuralnet(default_time ~ ., data = train_data, hidden = 15, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
-                      err.fct = "sse", lifesign = "full", threshold = 0.01, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
+nn <- neuralnet(default_time ~ ., data = train_data, hidden = 11, act.fct = "logistic", linear.output = F, stepmax = 1e+07,
+                      err.fct = "sse", lifesign = "full", threshold = 0.05, algorithm = "sag", learningrate.factor = list( minus = 0.5, plus = 1.2))
   
 # Get predictions for the testing set
 evaluate_model(list(nn), modelname = c("Neural Network")) 
-
-
-
 
 
 
@@ -346,7 +351,6 @@ predicted_lasso <- predict(log_lasso, newx = test_data[ ,-19] %>% as.matrix, s =
 
 # ============================== glmboost  ==============================
 
-shuffle(50000)
 
 glm_fit     <- caret::train(as.factor(default_time) ~ ., data=train_data, method="glmboost", trControl = fitControl) 
 
