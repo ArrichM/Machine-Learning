@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr", "DMwR")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -239,7 +239,7 @@ log_reg <- glm(default_time ~ ., data = train_data, family = binomial())
 predicted_reg <- predict(log_reg, newdata = test_data, type = "response")
 
 # Compare logistic regression and neural network
-evaluate_model(list(log_reg, nn), modelname = c( "Logistic Regression", "Neural Network"))
+evaluate_model(list(log_reg), modelname = c( "Logistic Regression"))
 
 
 
@@ -249,18 +249,21 @@ evaluate_model(list(log_reg, nn), modelname = c( "Logistic Regression", "Neural 
 
 
 # initialize cross validation Folds. Here we use 5-fold cross validation, repeated 3 times
-fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 3)  
+fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 3,  sampling = "smote", classProbs = TRUE)  
 
 # Fit boosted logistic/probit regression
-logitboost_fit <- caret::train(as.factor(default_time) ~ ., data=train_data, method="LogitBoost", trControl = fitControl)
+logitboost_fit <- caret::train(make.names(default_time) ~ ., data=train_data, method="LogitBoost", trControl = fitControl)
+
+# Check probabilities
+predict(logitboost_fit, newdata=test_data, type="prob")
 
 # Looking at how accuracy increases over the training procedure
 trellis.par.set(caretTheme())
 plot(logitboost_fit) 
 
 # 
-evaluate_model(list(log_reg, logitboost_fit), modelname = c("Logistic Regression", "LogitBoost"))
-
+evaluate_model(list(logitboost_fit), modelname = c("LogitBoost"))
+confusionMatrix(logitboost_fit)
 
 
 
@@ -297,14 +300,15 @@ evaluate_model(list(log_reg, nn, logitboost_fit, random_forest), modelname = c("
 
 # == Alternative Way to get Random Forrest via cross validation ==
 
-rf_fit     <- caret::train(as.factor(default_time) ~ ., data=train_data, method="ranger", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
+rf_fit     <- caret::train(make.names(default_time) ~ ., data=train_data, method="ranger", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
 
 # Looking at how accuracy increases over the training procedure
 trellis.par.set(caretTheme())
 plot(rf_fit) 
 
 # Lets look how it performs on the test sample.
-evaluate_model(list(log_reg, nn, logitboost_fit, random_forest, rf_fit), modelname = c("Logistic Regression", "Neural Network", "LogitBoost", "untrained RF", "trained RF"))
+evaluate_model(list(rf_fit), modelname = c("trained RF"))
+confusionMatrix(rf_fit)
 
 
 
@@ -346,25 +350,38 @@ predicted_lasso <- predict(log_lasso, newx = test_data[ ,-19] %>% as.matrix, s =
 
 # ============================== glmboost  ==============================
 
-shuffle(50000)
+#shuffle(50000)
 
-glm_fit     <- caret::train(as.factor(default_time) ~ ., data=train_data, method="glmboost", trControl = fitControl) 
+glm_fit     <- caret::train(make.names(default_time) ~ ., data=train_data, method="glmboost", trControl = fitControl) 
 
 # Looking at how accuracy increases over the training procedure
 plot(glm_fit) 
 
 # Lets look how it performs on the test sample.
-metrics <- evaluate_model(list(log_reg, nn, logitboost_fit, random_forest, rf_fit, glm_fit), modelname = c("Logistic Regression", "Neural Network", "LogitBoost", "untrained RF", "trained RF", "GLM Boost"))
+evaluate_model(list(glm_fit), modelname = c("GLM Boost"))
+confusionMatrix(glm_fit)
+
+metrics <- evaluate_model(list(log_reg, logitboost_fit, random_forest, rf_fit, glm_fit), modelname = c("Logistic Regression", "LogitBoost", "untrained RF", "trained RF", "GLM Boost"))
 metrics 
 plot_evaluation(metrics)
 
 
+# ============================== Multinomial  ==============================
+
+multinomial     <- caret::train(make.names(default_time) ~ ., data=train_data, method="multinom", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
+predict(mxnet, test_data, type="prob")
+evaluate_model(list(multinnomial), modelname = c("multinomial"))
 
 
+# ============================== avNNet  ==============================
 
+avNNet     <- caret::train(make.names(default_time) ~ ., data=train_data, method="avNNet", trControl = fitControl) # We use "ranger" method for random forrest. The training algorithm seeks to optimize accuracy.
+evaluate_model(list(avNNet), modelname = c("ageraged NN"))
 
-
-
+# plot
+metrics <- evaluate_model(list(logitboost_fit, rf_fit, glm_fit, multinomial, avNNet), modelname = c("LogitBoost",  "trained RF", "GLM Boost", "multinomial", "averaged NN"))
+metrics 
+plot_evaluation(metrics)
 
 # ============================== Comparison  ==============================
 
