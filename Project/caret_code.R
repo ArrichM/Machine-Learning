@@ -35,7 +35,7 @@ dirname(rstudioapi::getSourceEditorContext()$path) %>% setwd
 
 set.seed(100)
 ## Read Data from CSV
-dat <- read.csv( "Data/mortgage.csv")
+dat <- read.csv("Data/mortgage.csv"))
 
 
 
@@ -192,8 +192,8 @@ dat$age <- dat$time- dat$orig_time
 shuffle(nrow(dat), ratio = 3/4)
 
 # Do undersampling of nondefaults
-def_data <- train_data[which(train_data$default_time == 1),]
-liv_data <- train_data[which(train_data$default_time == 0),]
+def_data <- train_data[which(train_data$default_time == "default"),]
+liv_data <- train_data[which(train_data$default_time == "non.default"),]
 train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
 
 
