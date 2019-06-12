@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel", "corrplot", "pROC")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel", "corrplot", "pROC", "gridExtra", "lattice")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -188,8 +188,11 @@ test_roc <- function(model) {
 
 # Function plotting of ROCs
 
+theme1 <- trellis.par.get()
+
 ROC_plot <- function(caret_fit, modelname=models_to_run){
   models_to_run = unlist(modelname)
+  n <- length(modelnames)
   preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
   roc   <- lapply(1:length(models_to_run), function(x) roc(preds[[x]][["default"]],
                                                            response= test_data$default_time,
@@ -198,27 +201,32 @@ ROC_plot <- function(caret_fit, modelname=models_to_run){
   plot.roc(roc[[1]], auc.polygon=TRUE,
            grid=c(0.1, 0.2), grid.col=c("grey", "red"),
            print.thres=TRUE,
-           reuse.auc=FALSE, main="ROC curves")#, #add = TRUE)
+           reuse.auc=FALSE, main="ROC curves",
+           #col = gray((1:length(modelnames))/6))#, #add = TRUE)
+           col = rainbow(n))
   legend("bottomright", legend=modelnames,
-         col=c(par("fg"), "blue"), lwd=2)
+         col = rainbow(length(modelnames)), lwd=2)
   for (i in 2:length(modelnames)){
-    plot.roc(roc[[i]], add=T)
+    plot.roc(roc[[i]], add=T,
+             col = rainbow(n)[i])
     
   }
   
   
 }
 
+
 # Plotting function for histograms
 hist_plot <- function(caret_fit.=caret_fit, modelname=models_to_run){
   models_to_run = unlist(modelname)
   preds <- lapply(caret_fit, function(x) predict(x, test_data, type="prob"))
   list <- list()
+  par(mfrow=c(10,2))
   for (i in 1:length(models_to_run)){
     #par(mfrow=c(1,1))
     list[[i]] <- histogram(~preds[[i]][["default"]]|test_data$default_time,xlab="Probability of Poor Segmentation", main=modelnames[i])
   }
-  return(list)
+  do.call(grid.arrange, c(list, list(nrow=2)))
 }
 
 # Densityplots
@@ -228,10 +236,52 @@ densityplots_all <- function(caret_fit.=caret_fit){
     list[[i]] <- densityplot(caret_fit[[i]], pch = "|", main=modelnames[i])
   }
   trellis.par.set(caretTheme())
-  return(list)
+  do.call(grid.arrange, c(list, list(nrow=2)))
+}
+densityplots_all()
+
+# Box and Dotplots
+resample_plot <- function(resamples){
+  theme1 <- trellis.par.get()
+  theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
+  theme1$plot.symbol$pch = 16
+  theme1$plot.line$col = rgb(1, 0, 0, .7)
+  theme1$plot.line$lwd <- 2
+  trellis.par.set(theme1)
+  grid.arrange(bwplot(resamples, layout = c(3, 1), main="Boxplots"),
+               dotplot(resamples,layout = c(3, 1), main="Dotplots"),
+               nrow=2)	# dotplot
+}
+
+# Plot function for the subsamples to be compared
+bwplot_subsampling <- function(sub_resamples){
+  bwplot_subsample_list <- list()
+  for (i in 1:length(modelnames)){
+    trellis.par.set(theme1)
+    bwplot_subsample_list[[i]] <-bwplot(sub_resamples[[modelnames[i]]], main=modelnames[i], layout=c(3,1))
+    
+  }
+  
+  do.call(grid.arrange, c(bwplot_subsample_list, list(nrow=length(bwplot_subsample_list),
+                                                      top=textGrob(gp=gpar(col='black',
+                                                                           fontsize=20),"Subsamples"))))
+  #top="top label"))))))
 }
 
 
+# Simple plot to display the differences
+dif_subsample_plot <- function(all_resample){
+  dif_subsample_list <- list()
+  for (i in 1:length(modelnames)){
+    difsubsampling_method <- diff(all_resamples[[i]])
+    trellis.par.set(theme1)
+    dif_subsample_list[[i]] <-dotplot(difsubsampling_method, main=modelnames[i])
+  }
+  do.call(grid.arrange, c(dif_subsample_list, list(nrow=length(dif_subsample_list), 
+                                                   top=textGrob(gp=gpar(col='black',
+                                                                        fontsize=20),"Differences"))))
+  #top="top label")))
+}
 # ============================== Prepare Data ==============================
 
 ## Remove NA observations
@@ -241,7 +291,7 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # Undersample non-defaults from the whole dataset. Holdout testing data right away
-shuffle(n=5000, ratio = 3/4)
+shuffle(n=3000, ratio = 3/4)
 
 # Do undersampling of nondefaults
 # def_data <- train_data[which(train_data$default_time == "default"),]
@@ -316,17 +366,10 @@ summary(rValues)
 
 
 # Load theme
-theme1 <- trellis.par.get()
-theme1$plot.symbol$col = rgb(.2, .2, .2, .4)
-theme1$plot.symbol$pch = 16
-theme1$plot.line$col = rgb(1, 0, 0, .7)
-theme1$plot.line$lwd <- 2
-trellis.par.set(theme1)
-bwplot(rValues, layout = c(3, 1))
 
+
+resample_plot(rValues)
 #Plot
-bwplot(rValues,metric="ROC",main="ROC")	# boxplot
-dotplot(rValues,layout = c(3, 1))	# dotplot
 splom(rValues,metric="ROC")
 xyplot(rValues, what = "BlandAltman")
 
@@ -334,13 +377,8 @@ xyplot(rValues, what = "BlandAltman")
 difValues <- diff(rValues)
 summary(difValues)
 
-trellis.par.set(theme1)
-bwplot(difValues, layout = c(3, 1))
 
-# Logit boosts seems to perform significantly worse 
-trellis.par.set(caretTheme())
-dotplot(difValues)
-
+resample_plot(difValues)
 
 # ================================= Performances with Subsampling =========================
 
@@ -396,26 +434,11 @@ names(all_tests) <- modelnames
 # Get summary for all resamples
 summary <- lapply(all_resamples, function(x) summary(x, metric = "ROC"))
 
-# Plot them
-bwplot_subsample_list <- list()
-for (i in 1:length(modelnames)){
-  trellis.par.set(theme1)
-  bwplot_subsample_list[[i]] <-bwplot(all_resamples[[modelnames[i]]], main=modelnames[i], layout=c(3,1))
-  
-}
-
-bwplot_subsample_list
+# Plot bw plots
+bwplot_subsampling(all_resamples)
 
 # Now we are testing wether there is a significant difference in prediction power between the models
-dif_subsample_plot <- list()
-for (i in 1:length(modelnames)){
-  difsubsampling_method <- diff(all_resamples[[i]])
-  trellis.par.set(theme1)
-  dif_subsample_plot[[i]] <-dotplot(difsubsampling_method, main=modelnames[i])
-  
-}
-dif_subsample_plot
-
+dif_subsample_plot(all_resamples) 
 # No real difference from zero
 
 all_tests
