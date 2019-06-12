@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel", "corrplot", "pROC", "gridExtra", "lattice")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel", "corrplot", "pROC", "gridExtra", "lattice", "skimr")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -29,7 +29,7 @@ sapply(toload, require, character.only = TRUE)
 # ============================== Read Data  ==============================
 
 rm(list=ls())
-
+gc()
 ## Working Directory Setting
 dirname(rstudioapi::getSourceEditorContext()$path) %>% setwd
 
@@ -291,7 +291,7 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # Undersample non-defaults from the whole dataset. Holdout testing data right away
-shuffle(n=3000, ratio = 3/4)
+shuffle(n=5000, ratio = 3/4)
 
 # Do undersampling of nondefaults
 # def_data <- train_data[which(train_data$default_time == "default"),]
@@ -299,19 +299,45 @@ shuffle(n=3000, ratio = 3/4)
 # train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
 
 
+# ============================== Data Exploration Tools ==============================
+
+# Warning: if error occurs, try to enlarge the plot device. It should work then
+
+# Blue boxes represent regions where most data lie inside. 
+# At first glance gdp_time seems to be important, FICO_orig_time, LTV time and interest rate time
+trellis.par.set(theme = col.whitebg(), warn = FALSE)
+featurePlot(x = train_data[,-19], 
+            y = train_data$default_time, 
+            plot = "pairs",
+            strip=strip.custom(par.strip.text=list(cex=.7)),
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")))
+
+# Same here, , especially GDP time. We w ill confirm the importances later. These plots just give an idea
+# For more interpretations look at https://www.machinelearningplus.com/machine-learning/caret-package/  Chapter 4
+featurePlot(x = train_data[,-19], 
+            y = train_data$default_time, 
+            plot = "density",
+            strip=strip.custom(par.strip.text=list(cex=.7)),
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")))
 
 
+# Some summary statistic. Extend console window to see all of it
+skimmed <- skim_to_wide(train_data)
+skimmed[, c(1:5, 9:11, 13, 15:16)] %>% kable()
 
 # ============================== Run different caret models ==============================
 
 
 # Create fit constrol object which will control all models. We balance our dataset using the smote algortihm
-fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 3, classProbs = TRUE,
-                           summaryFunction=twoClassSummary, sampling = "down",
+fitControl <- trainControl(method="repeatedcv", number = 10, repeats = 1, classProbs = TRUE,
+                           summaryFunction=twoClassSummary, sampling = "smote",
                            savePredictions = T)
 
 # We specify the desired models
-models_to_run <- list("LogitBoost","glmboost","multinom","avNNet")
+# models_to_run <- list("rf","glmboost","xgbDART", "svmRadial", "mxnetAdam")
+models_to_run <- list("glmboost","LogitBoost", "xgbDart", "avNNet")
 
 
 # Set up cluster for parallel computing during CV
@@ -328,22 +354,29 @@ caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_t
 
 stopCluster(cl)
 
-# Rename
+
+# Renaming the object to have a better overview
 modelnames <- unlist(models_to_run)
 names(caret_fit) <-  modelnames
 
-# Check and compare metrics
+# Check and compare metrics. Especially the confusion matrices are of interest
 metrics <- evaluate_model(caret_fit, modelname = modelnames) %T>% print
 
 # ====================================== Plots ========================================
-trellis.par.set(caretTheme())
-# Plot rocs
+
+# Check out importance of variables for each of the models. This simply displays how much weights they were given. It can be seen that
+# GDP time seems to be important in each of them.
+importance <- lapply(caret_fit, varImp)
+lapply(importance, plot)
+
+
+# Plot rocs. The more the lines are at the left top, the better they perform
 ROC_plot(caret_fit)
 
-# Plot densities
+# Plot densities. This is only to see where
 densityplots_all()
 
-#Plot historgrams
+#Plot historgrams. This is also exploration
 hist_plot()
 
 
@@ -359,7 +392,7 @@ hist_plot()
 
 # ================================== Performances ==============================
 
-
+# WE
 rValues <- resamples(caret_fit)
 rValues$values
 summary(rValues)
