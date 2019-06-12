@@ -35,7 +35,7 @@ dirname(rstudioapi::getSourceEditorContext()$path) %>% setwd
 
 set.seed(100)
 ## Read Data from CSV
-dat <- read.csv("Data/mortgage.csv"))
+dat <- read.csv("Data/mortgage.csv")
 
 
 
@@ -272,7 +272,7 @@ registerDoParallel(cl)
 
 # Carry out model fitting using CV
 caret_fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ .,
-                                                            data=train_data, method= x, trControl = fitControl, metric = "ROC") )
+                                          data=train_data, method= x, trControl = fitControl, metric = "ROC") )
 
 # Stop Cluster
 
@@ -284,6 +284,7 @@ names(caret_fit) <-  modelnames
 
 # Check and compare metrics
 metrics <- evaluate_model(caret_fit, modelname = modelnames) %T>% print
+
 
 # ====================================== Plots ========================================
 trellis.par.set(caretTheme())
@@ -367,7 +368,6 @@ stopCluster(cl)
 
 
 names(subsampled_fits) <- sub_methods
-
 
 
 
