@@ -291,12 +291,7 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # Undersample non-defaults from the whole dataset. Holdout testing data right away
-shuffle(n=5000, ratio = 3/4)
-
-# Do undersampling of nondefaults
-# def_data <- train_data[which(train_data$default_time == "default"),]
-# liv_data <- train_data[which(train_data$default_time == "non.default"),]
-# train_data <- rbind(def_data,liv_data[sample(1:nrow(liv_data),nrow(def_data)),])
+shuffle(n=1000, ratio = 3/4)
 
 
 # ============================== Data Exploration Tools ==============================
@@ -308,7 +303,7 @@ shuffle(n=5000, ratio = 3/4)
 trellis.par.set(theme = col.whitebg(), warn = FALSE)
 featurePlot(x = train_data[,-19], 
             y = train_data$default_time, 
-            plot = "pairs",
+            plot = "box",
             strip=strip.custom(par.strip.text=list(cex=.7)),
             scales = list(x = list(relation="free"), 
                           y = list(relation="free")))
@@ -336,8 +331,8 @@ fitControl <- trainControl(method="repeatedcv", number = 10, repeats = 1, classP
                            savePredictions = T)
 
 # We specify the desired models
-# models_to_run <- list("rf","glmboost","xgbDART", "svmRadial", "mxnetAdam")
-models_to_run <- list("glmboost","LogitBoost", "xgbDart", "avNNet")
+# models_to_run <- list("rf", "xgbDART", "svmRadial", "mxnetAdam")
+models_to_run <- list("glmboost","LogitBoost", "xgbDART", "avNNet")
 
 
 # Set up cluster for parallel computing during CV
@@ -373,50 +368,48 @@ lapply(importance, plot)
 # Plot rocs. The more the lines are at the left top, the better they perform
 ROC_plot(caret_fit)
 
-# Plot densities. This is only to see where
+# Plot densities. These display where the tuning parameters had their optimum
 densityplots_all()
 
 #Plot historgrams. This is also exploration
 hist_plot()
 
 
+# ================================== Comparison between models ==============================
 
-# Comparing Multiple Models
-# Having set the same seed before running gbm.tune and xgb.tune
-# we have generated paired samples and are in a position to compare models 
-# using a resampling technique.
-# (See Hothorn at al, "The design and analysis of benchmark experiments
-# -Journal of Computational and Graphical Statistics (2005) vol 14 (3) 
-# pp 675-699) 
-
-
-# ================================== Performances ==============================
-
-# WE
+# With resample function one cam make statistical statements about their performance differences
+# By resampling we can check the resample distributions. 
 rValues <- resamples(caret_fit)
 rValues$values
 summary(rValues)
 
 
-# Load theme
-
-
+# Use our prespecified plot function from above
 resample_plot(rValues)
+
 #Plot
 splom(rValues,metric="ROC")
 xyplot(rValues, what = "BlandAltman")
 
-# Quick check if there is difference between models
+# Since they are fit it makes sense to interfere
+# about the differences between the models. We even perform t-test to evaluate the null that there is no 
+# difference between the models. We do that by applying diff function
 difValues <- diff(rValues)
 summary(difValues)
 
-
+# Plot
 resample_plot(difValues)
 
-# ================================= Performances with Subsampling =========================
+# ================================= Subsampling for class imbalances =========================
+
+# Since we know that our target has minor class representation, we can encounter that problem by down/up sampling and more methods.
+# Since our data has less than 3% of defaults, this needs to be handled with care. Therefore, prior to fitting the final model, we
+# want to test which of the subsampling methods is superior. Therefore, we fit each model for each method, and the check how they 
+# perform under each technique. Finally, we choose the best
+
+# ================
 
 #Function to Fit caret_fit for every type of resampling (upsampling, downsampling, SMOTE, ROSE)
-
 subsamples <- function(char){
   fitControl$sampling <- char
   fit <- lapply(models_to_run, function(x) caret::train(make.names(default_time) ~ ., 
@@ -436,23 +429,25 @@ subsampled_fits <- lapply(sub_methods, function(x) subsamples(x))
 
 stopCluster(cl)
 
-
+# Give names for better overview
 names(subsampled_fits) <- sub_methods
 
 
 
 
 # Extract for each subsampling method the corresponding method
-all_resamples <- list()
-all_tests <- list()
-for(j in 1:length(modelnames)){
-  models <- list()
-  for(i in 1:length(sub_methods)){
+
+
+all_resamples <- list()  # setting up empty list which gets filled with every resample for each model and each subsampling after every iteration. This will be a nested list in the end
+all_tests <- list()     # Setting up empty list which gets filled with roc test for every model and every subsampling method. this will be an empty list in the end
+for(j in 1:length(modelnames)){ # creates a list where for every model there are 4 version, corresponding to the subsampling technique
+  models <- list()              # create a list of the same model for different subsampling methods
+  for(i in 1:length(sub_methods)){ 
     mod <- subsampled_fits[[sub_methods[i]]][[modelnames[j]]]
     models[[i]] <- mod
   }
-  names(models)   <- sub_methods
-  all_resamples[[j]] <- resamples(models)
+  names(models)   <- sub_methods # Rename
+  all_resamples[[j]] <- resamples(models) # Simply apply resampling
   all_tests[[j]]      <- lapply(models, function(x) test_roc(x))
   all_tests[[j]]      <- lapply( all_tests[[j]], as.vector)
   all_tests[[j]]      <- do.call("rbind", all_tests[[j]])
@@ -460,14 +455,14 @@ for(j in 1:length(modelnames)){
   all_tests[[j]] <- as.data.frame(all_tests[[j]])
 }
 
-# Reassign themodelnames
+# Reassign themodelnames for overview. We have a nested list where we can access every model under each subsampling technique
 names(all_resamples) <- modelnames
 names(all_tests) <- modelnames
 
 # Get summary for all resamples
 summary <- lapply(all_resamples, function(x) summary(x, metric = "ROC"))
 
-# Plot bw plots
+# Plot bw plots of all models and compare them
 bwplot_subsampling(all_resamples)
 
 # Now we are testing wether there is a significant difference in prediction power between the models
