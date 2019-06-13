@@ -322,11 +322,16 @@ featurePlot(x = train_data[,-19],
 skimmed <- skim_to_wide(train_data)
 skimmed[, c(1:5, 9:11, 13, 15:16)] %>% kable()
 
+
+train_data[, c(1:5, 9:11, 13, 15:16, 19)] %>% dplyr::group_by(default_time) %>% skim()
+
 # ============================== Run different caret models ==============================
 
 
+shuffle(n=1000, ratio = 3/4)
+
 # Create fit constrol object which will control all models. We balance our dataset using the smote algortihm
-fitControl <- trainControl(method="repeatedcv", number = 10, repeats = 1, classProbs = TRUE,
+fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 2, classProbs = TRUE,
                            summaryFunction=twoClassSummary, sampling = "smote",
                            savePredictions = T)
 
