@@ -16,7 +16,7 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel", "corrplot", "pROC", "gridExtra", "lattice", "skimr")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel", "corrplot", "pROC", "gridExtra", "lattice", "skimr", "mxnet")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -30,6 +30,10 @@ sapply(toload, require, character.only = TRUE)
 
 rm(list=ls())
 gc()
+
+# When running whole dataset, some objects become very big. Decomment the below lines to increase memory limit and to handle the amount of data
+# limit <- memory.limit()
+# memory.limit(limit)
 ## Working Directory Setting
 dirname(rstudioapi::getSourceEditorContext()$path) %>% setwd
 
@@ -291,18 +295,27 @@ dat <- dat[complete.cases(dat),]
 dat$age <- dat$time- dat$orig_time
 
 # Undersample non-defaults from the whole dataset. Holdout testing data right away
-shuffle(n=1000, ratio = 3/4)
+shuffle(n=floor(nrow(dat)/200), ratio = 3/4)
 
 
 # ============================== Data Exploration Tools ==============================
 
 # Warning: if error occurs, try to enlarge the plot device. It should work then
+<<<<<<< HEAD
+# If you're running the whole dataset, this may take a while. 
+# Blue boxes represent regions where most data lie inside. 
+# At first glance gdp_time seems to be important, FICO_orig_time, LTV time and interest rate time
+
+featurePlot(x = train_data[,-19], 
+            y = train_data$default_time, 
+=======
 
 # Blue boxes represent regions where most data lie inside.
 # At first glance gdp_time seems to be important, FICO_orig_time, LTV time and interest rate time
 trellis.par.set(theme = col.whitebg(), warn = FALSE)
 featurePlot(x = train_data[,-19],
             y = train_data$default_time,
+>>>>>>> 18cb5b28e94c6864a89035930e165a71521e7387
             plot = "box",
             strip=strip.custom(par.strip.text=list(cex=.7)),
             scales = list(x = list(relation="free"),
@@ -336,8 +349,8 @@ fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 2, classPr
                            savePredictions = T)
 
 # We specify the desired models
-# models_to_run <- list("rf", "xgbDART", "svmRadial", "mxnetAdam")
-models_to_run <- list("glmboost","LogitBoost", "xgbDART", "avNNet")
+models_to_run <- list("rf", "xgbDART", "svmRadial", "mxnetAdam")
+# models_to_run <- list("glmboost","LogitBoost", "xgbDART", "avNNet")
 
 
 # Set up cluster for parallel computing during CV
@@ -359,6 +372,8 @@ stopCluster(cl)
 modelnames <- unlist(models_to_run)
 names(caret_fit) <-  modelnames
 
+# Save the object
+#saveRDS(caret_fit, "caret_fit_complex.rds")
 # Check and compare metrics. Especially the confusion matrices are of interest
 metrics <- evaluate_model(caret_fit, modelname = modelnames) %T>% print
 
@@ -443,7 +458,7 @@ stopCluster(cl)
 # Give names for better overview
 names(subsampled_fits) <- sub_methods
 
-
+#saveRDS(subsampled_fits, "subsampled_fits_complex.rds")
 
 # Extract for each subsampling method the corresponding method
 
