@@ -27,7 +27,7 @@ tikz(file="ROC.tex")
 hist_plot()
 dev.off()
 
-pdf(file="ROC.pdf", height=5, width=5)
+pdf(file="ROC.pdf", height=8, width=8)
 ROC_plot(caret_fit)
 dev.off()
 

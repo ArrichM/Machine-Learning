@@ -16,7 +16,8 @@
 
 # ============================== Library Calls  ==============================
 
-toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR","ROSE","doParallel", "corrplot", "pROC", "gridExtra", "lattice", "skimr")
+toload <- c("magrittr","plyr","reshape2","neuralnet","randomForest","glmnet", "caret", "rlist", "tidyr", "mboost","dplyr","DMwR",
+            "ROSE","doParallel", "corrplot", "pROC", "gridExtra", "lattice", "skimr","kernlab","nnet","caTools")
 toinstall <- toload[which(toload %in% installed.packages()[,1] == F)]
 sapply(toinstall, install.packages, character.only = TRUE)
 sapply(toload, require, character.only = TRUE)
@@ -205,6 +206,15 @@ test_roc <- function(model) {
 }
 
 
+# Evaluating AUC
+get_auc <- function(model) {
+  preds <- predict(model, test_data, type="prob")
+  roc_obj <- roc(preds[["default"]],
+                 response= test_data$default_time,
+                 levels=rev(levels(test_data$default_time)))
+  
+  auc(roc_obj)
+}
 
 
 
@@ -220,17 +230,19 @@ ROC_plot <- function(caret_fit, modelname=models_to_run){
   
   plot.roc(roc[[1]], auc.polygon=TRUE,
            grid=c(0.1, 0.2), grid.col=c("grey", "red"),
-           print.thres=TRUE,
-           reuse.auc=FALSE, main="ROC curves",
+           print.thres=F, main="ROC curves",
            #col = gray((1:length(models_to_run))/6))#, #add = TRUE)
            col = rainbow(n))
+  
   legend("bottomright", legend=models_to_run,
          col = rainbow(length(models_to_run)), lwd=2)
+  
   for (i in 2:length(models_to_run)){
     plot.roc(roc[[i]], add=T,
              col = rainbow(n)[i])
     
   }
+  
 }
 
 
@@ -296,25 +308,19 @@ bwplot_subsampling <- function(sub_resamples){
   #top="top label"))))))
 }
 
-
-
-
 # Simple plot to display the differences
-dif_subsample_plot <- function(all_resample){
-  dif_subsample_list <- list()
-  for (i in 1:length(models_to_run)){
-    difsubsampling_method <- diff(all_resamples[[i]])
-    trellis.par.set(theme1)
-    dif_subsample_list[[i]] <-dotplot(difsubsampling_method, main=models_to_run[i])
-  }
-  do.call(grid.arrange, c(dif_subsample_list, list(nrow=length(dif_subsample_list),
-                                                   top=textGrob(gp=gpar(col='black',
-                                                                        fontsize=20),"Differences"))))
-  #top="top label")))
+plot_rocdif <- function(rocdif = difValues){
+  
+  densp <- lapply(1:3, function(x) densityplot(difValues, metric = difValues$metric[x]))
+  
+  dotp <- lapply(1:3, function(x) dotplot(difValues, metric = difValues$metric[x]))
+  
+  do.call(grid.arrange, list(grobs = c(densp,dotp),  layout_matrix = rbind(c(1, 2, 3),
+                                                             c(4, 4, 4),
+                                                             c(5,5,5),
+                                                             c(6,6,6)), heights = c(2,1,1,1)
+  ))
 }
-
-
-
 
 # Functin to cope with the multifits and extract relevant info
 extract_submodels <- function(subsampled_fits1 = subsampled_fits, models_to_run1 = models_to_run, sub_methods1 = sub_methods){
@@ -374,6 +380,12 @@ train_caret <- function(x, control = fitControl, subsave = T){
 
 
 
+
+
+
+
+
+
 # ============================== Data Exploration Tools ==============================
 
 # Function plotting of ROCs
@@ -416,10 +428,16 @@ train_data[, c(1:5, 9:11, 13, 15:16, 19)] %>% dplyr::group_by(default_time) %>% 
 
 
 
-# ============================== Run different caret models ==============================
 
 
 
+
+# ================================= Subsampling for class imbalances =========================
+
+# Since we know that our target has minor class representation, we can encounter that problem by down/up sampling and more methods.
+# Since our data has less than 3% of defaults, this needs to be handled with care. Therefore, prior to fitting the final model, we
+# want to test which of the subsampling methods is superior. Therefore, we fit each model for each method, and the check how they
+# perform under each technique. Finally, we choose the best
 
 
 
@@ -429,10 +447,10 @@ train_data[, c(1:5, 9:11, 13, 15:16, 19)] %>% dplyr::group_by(default_time) %>% 
 sub_methods <- c("up", "down", "rose", "smote")
 
 # We specify the desired models
-models_to_run <- c("glm", "LogitBoost", "avNNet", "svmRadial", "xgbDART")
+models_to_run <- c("glm", "LogitBoost", "avNNet", "svmRadial")
 
 # Draw training and testing sample
-shuffle(10000, ratio = 2/3)
+shuffle(500, ratio = 2/3, seed = 99)
 
 #Function to Fit caret_fit for every type of resampling (upsampling, downsampling, SMOTE, ROSE)
 subsamples <- function(char, models){
@@ -457,8 +475,11 @@ subsampled_fits <- lapply(sub_methods, subsamples, models = models_to_run)
 # Stop CLuster when computing is done
 stopCluster(cl)
 
-# Set correct nsmes for the list objects
+# Set correct names for the list objects
 names(subsampled_fits) <- sub_methods
+
+save(subsampled_fits, file = "subfits.Rdata")
+
 
 # Extract for each subsampling method the corresponding method and test right away
 test_res <- extract_submodels(subsampled_fits)
@@ -482,12 +503,10 @@ all_resamples <- test_res$all_resamles
 
 
 
+# ================================= Run several caret models =========================
 
-##### .Second step - Fit models with chosen sampling method on larger dataset. #####
-
-
-shuffle(n = 100000, ratio = 2/3)
-
+# Redraw larger fitting set
+shuffle(500, seed = 99)
 
 # Create fit constrol object which will control all models. We balance our dataset using the smote algortihm
 fitControl <- trainControl(method="repeatedcv", number = 5, repeats = 2, classProbs = TRUE,
@@ -500,78 +519,66 @@ cl <- makePSOCKcluster(detectCores())
 registerDoParallel(cl)
 
 # Carry out model fitting using CV
-caret_fit <- lapply(models_to_run, function(x)  train_caret(x)) %>% set_names(models_to_run)
+caret_fit <- lapply(models_to_run, function(x)  train_caret(x, control = fitControl)) %>% set_names(models_to_run)
 
 # Stop CLuster when computing is done
 stopCluster(cl)
 
-
-
-save(caret_fit, "largefit.Rdata")
-
 # Check and compare metrics. Especially the confusion matrices are of interest
-metrics <- evaluate_model(caret_fit, modelname = models_to_run) %T>% print
+metrics <- evaluate_model(caret_fit, modelname =c("LogitBoost", "avNNet", "Logit", "svmRadial")) %T>% print
 
 
-# ====================================== Plots ========================================
 
 
-# Check out importance of variables for each of the models. This simply displays how much weights they were given. It can be seen that
-# GDP time seems to be important in each of them.
+
+
+
+
+
+
+
+# ====================================== Plotting and Evaluation ========================================
+
+
+# Check out importance of variables for each of the models.
 importance <- lapply(caret_fit, varImp)
 lapply(importance, plot)
-
 
 # Plot rocs. The more the lines are at the left top, the better they perform
 ROC_plot(caret_fit)
 
-# Comparing Multiple Models
-# Having set the same seed before running gbm.tune and xgb.tune
-# we have generated paired samples and are in a position to compare models
-# using a resampling technique.
-# (See Hothorn at al, "The design and analysis of benchmark experiments
-# -Journal of Computational and Graphical Statistics (2005) vol 14 (3)
-# pp 675-699)
+# Extract AUC for each model
+auc <- lapply(caret_fit, get_auc)
+lapply(auc, function(x) as.character(x) %>% as.numeric) %>% unlist %>% matrix(ncol = 4) %>%
+  set_rownames("AUC") %>% set_colnames(c("Logit_Boost","avNNet","Logit","SVM")) %>% stargazer
 
 #Plot historgrams. This is also exploration
 hist_plot()
 
-
-# ================================== Comparison between models ==============================
-
-# With resample function one cam make statistical statements about their performance differences
 # By resampling we can check the resample distributions.
 rValues <- resamples(caret_fit)
 rValues$values
 summary(rValues)
 
-
 # Use our prespecified plot function from above
 resample_plot(rValues)
 
-#Plot
-splom(rValues,metric="ROC")
-xyplot(rValues, what = "BlandAltman")
+# Plot differences in performance
+difValues <- diff(rValues) %T>% summary
 
-# Since they are fit it makes sense to interfere
-# about the differences between the models. We even perform t-test to evaluate the null that there is no
-# difference between the models. We do that by applying diff function
-difValues <- diff(rValues)
-summary(difValues)
+#pdf(file="caret_plot_dif.pdf",  height = 24, width=20)
+plot_rocdif(difValues)
+#dev.off()
 
-# Plot
-resample_plot(difValues)
 
-# ================================= Subsampling for class imbalances =========================
 
-# Since we know that our target has minor class representation, we can encounter that problem by down/up sampling and more methods.
-# Since our data has less than 3% of defaults, this needs to be handled with care. Therefore, prior to fitting the final model, we
-# want to test which of the subsampling methods is superior. Therefore, we fit each model for each method, and the check how they
-# perform under each technique. Finally, we choose the best
 
-# ================
 
-# Reassign themodels_to_run for overview. We have a nested list where we can access every model under each subsampling technique
+
+
+# ================ Sampling Evaluation
+
+# Reassign the models_to_run for overview. We have a nested list where we can access every model under each subsampling technique
 names(all_resamples) <- models_to_run
 names(all_tests) <- models_to_run
 
@@ -579,11 +586,18 @@ names(all_tests) <- models_to_run
 summary <- lapply(all_resamples, function(x) summary(x, metric = "ROC"))
 
 # Plot bw plots of all models and compare them
+#pdf(file="resample_plot.pdf",  height = 9, width=9)
 bwplot_subsampling(all_resamples)
+#dev.off()
+
 
 # Now we are testing wether there is a significant difference in prediction power between the models
-dif_subsample_plot(all_resamples)
 # No real difference from zero
+
+#pdf(file="resample_plot_dif.pdf",  height = 9, width=9)
+dif_subsample_plot(all_resamples)
+#dev.off()
+
 
 all_tests
 
